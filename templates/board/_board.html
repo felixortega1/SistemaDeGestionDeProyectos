@@ -1,0 +1,19 @@
+<div id="board" aria-live="polite">
+  {% if message %}<p class="messages-inline {{ message_level }}" role="alert">{{ message }}</p>{% endif %}
+  {% if not sprint %}
+  <p class="muted">No hay un sprint activo. Inicia uno desde la página de Sprints.</p>
+  {% else %}
+  <div class="columns">
+    {% for item in columns %}
+    <section class="column{% if item.full %} full{% endif %}" data-column-id="{{ item.column.pk }}">
+      <h3>{{ item.column.name }}
+        <span class="count">{{ item.count }} / {% if item.column.wip_limit is None %}∞{% else %}{{ item.column.wip_limit }}{% endif %}</span></h3>
+      {% if item.column.policy_text %}<p class="muted small">{{ item.column.policy_text }}</p>{% endif %}
+      <div class="cards" data-column-id="{{ item.column.pk }}">
+        {% for task in item.tasks %}{% include "board/_card.html" %}{% endfor %}
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>

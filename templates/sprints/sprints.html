@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Sprints{% endblock %}
+{% block content %}
+<h1>Sprints</h1>
+
+{% if can_manage %}
+<details {% if new_form.errors %}open{% endif %}>
+  <summary>Nuevo sprint</summary>
+  <form method="post" action="{% url 'sprint_new' project.pk %}" class="card narrow">{% csrf_token %}{{ new_form.as_p }}<button type="submit">Crear sprint</button></form>
+</details>
+{% endif %}
+
+{% for s in sprints %}
+<section class="card">
+  <h2>{{ s.name }} <span class="tag status-{{ s.status }}">{{ s.get_status_display }}</span></h2>
+  <p class="muted">{{ s.start_date|date:"Y-m-d"|default:"?" }} → {{ s.end_date|date:"Y-m-d"|default:"?" }}{% if s.goal %} · {{ s.goal }}{% endif %}</p>
+
+  {% if s.task_list %}
+  <table>
+    <tr><th>Tarea</th><th>Columna</th><th>Responsable</th></tr>
+    {% for t in s.task_list %}{% if t.sprint_id == s.pk %}
+    <tr><td>{{ t.title }}</td><td>{{ t.column.name }}</td><td>{{ t.assignee.display_name|default:"—" }}</td></tr>
+    {% endif %}{% endfor %}
+  </table>
+  {% else %}<p class="muted">Sin tareas.</p>{% endif %}
+
+  {% if can_manage %}
+    {% if s.status != 'closed' %}
+    <details>
+      <summary>Editar</summary>
+      <form method="post" action="{% url 'sprint_edit' s.pk %}">{% csrf_token %}{{ s.edit_form.as_p }}<button type="submit">Guardar</button></form>
+    </details>
+    {% endif %}
+    {% if s.status != 'closed' and backlog_tasks %}
+    <details>
+      <summary>Asignar tareas del backlog</summary>
+      <ul>
+      {% for t in backlog_tasks %}
+        <li>{{ t.title }}
+          <form method="post" action="{% url 'task_assign_sprint' t.pk %}" class="inline">{% csrf_token %}
+            <input type="hidden" name="sprint_id" value="{{ s.pk }}"><input type="hidden" name="next" value="{{ request.path }}">
+            <button type="submit">Asignar</button></form></li>
+      {% endfor %}
+      </ul>
+    </details>
+    {% endif %}
+    {% if s.status != 'closed' and pending_stories %}
+    <details>
+      <summary>Asignar una historia completa</summary>
+      <ul>
+      {% for st in pending_stories %}
+        <li>{{ st.title }}
+          <form method="post" action="{% url 'story_assign_sprint' st.pk %}" class="inline">{% csrf_token %}
+            <input type="hidden" name="sprint_id" value="{{ s.pk }}"><input type="hidden" name="next" value="{{ request.path }}">
+            <button type="submit">Asignar historia</button></form></li>
+      {% endfor %}
+      </ul>
+    </details>
+    {% endif %}
+    {% if s.status == 'planned' %}
+    <form method="post" action="{% url 'sprint_start' s.pk %}" class="inline">{% csrf_token %}<button type="submit">Iniciar sprint</button></form>
+    {% elif s.status == 'active' %}
+    <form method="post" action="{% url 'sprint_close' s.pk %}" class="card">{% csrf_token %}{{ close_form.as_p }}<button type="submit">Cerrar sprint</button></form>
+    {% endif %}
+  {% endif %}
+
+  {% if s.status == 'closed' %}
+    {% if s.review_notes %}<p><strong>Review:</strong> {{ s.review_notes }}</p>{% endif %}
+    {% if s.retro_notes %}<p><strong>Retrospectiva:</strong> {{ s.retro_notes }}</p>{% endif %}
+  {% endif %}
+</section>
+{% empty %}<p class="muted">Todavía no hay sprints.</p>{% endfor %}
+{% endblock %}

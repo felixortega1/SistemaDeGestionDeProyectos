@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Mis empresas{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Mis empresas</h1>
+  <a class="button" href="{% url 'project_new' %}">Nuevo proyecto</a>
+</div>
+<p class="muted">Elige una empresa para ver los proyectos en los que participas.</p>
+{% if companies %}
+<ul class="cards">
+  {% for c in companies %}
+  <li class="card company-card">
+    <a class="project-title" href="{% url 'company_detail' c.pk %}">{{ c.name }}</a>
+    <p class="muted small">{{ c.my_projects }} proyecto{{ c.my_projects|pluralize }} {{ c.my_projects|pluralize:"tuyo,tuyos" }}</p>
+    <a class="small" href="{% url 'company_detail' c.pk %}">Ver proyectos →</a>
+  </li>
+  {% endfor %}
+</ul>
+<p><a class="small" href="{% url 'project_list' %}">Ver todos mis proyectos juntos</a></p>
+{% else %}
+<div class="card narrow">
+  <h2 style="margin-top:0">Empieza por tu primer proyecto</h2>
+  <p class="muted">Al crear un proyecto eliges la empresa a la que pertenece, o creas una nueva.</p>
+  <a class="button" href="{% url 'project_new' %}">Crear proyecto</a>
+</div>
+{% endif %}
+{% endblock %}

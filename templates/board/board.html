@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Kanban{% endblock %}
+{% block content %}
+{% include "board/_diagram_switch.html" with current="kanban" %}
+<h1>Kanban{% if sprint %} — {{ sprint.name }}{% endif %}</h1>
+{% include "board/_board.html" %}
+{% endblock %}
+{% block scripts %}
+<script src="{% static 'vendor/sortable/Sortable.min.js' %}"></script>
+<script src="{% static 'js/board.js' %}"></script>
+{% endblock %}

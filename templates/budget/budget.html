@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Presupuesto{% endblock %}
+{% block content %}
+<h1>Presupuesto por departamento</h1>
+<p class="muted">Montos ingresados a mano. El sistema no los compara con ningún gasto.</p>
+<table>
+  <tr><th>Departamento</th><th>Monto</th><th>Moneda</th><th>Actualizado</th>{% if can_edit %}<th></th>{% endif %}</tr>
+  {% for d in departments %}
+  <tr>
+    <td>{{ d.name }}</td><td>{{ d.budget_amount }}</td><td>{{ d.currency }}</td>
+    <td class="muted">{{ d.updated_at|date:"Y-m-d H:i" }} {% if d.updated_by %}· {{ d.updated_by.display_name }}{% endif %}</td>
+    {% if can_edit %}
+    <td>
+      <details><summary>Editar</summary>
+        <form method="post" action="{% url 'department_edit' d.pk %}">{% csrf_token %}{{ d.form.as_p }}<button type="submit">Guardar</button></form>
+      </details>
+      <form method="post" action="{% url 'department_delete' d.pk %}" class="inline">{% csrf_token %}<button type="submit" class="danger">Borrar</button></form>
+    </td>
+    {% endif %}
+  </tr>
+  {% empty %}<tr><td colspan="5" class="muted">Sin departamentos.</td></tr>{% endfor %}
+</table>
+{% if can_edit %}
+<h2>Nuevo departamento</h2>
+<form method="post" action="{% url 'department_new' project.pk %}" class="card narrow">{% csrf_token %}{{ new_form.as_p }}<button type="submit">Crear</button></form>
+{% endif %}
+{% endblock %}

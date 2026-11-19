@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<h1>{{ title }}</h1>
+<form method="post" class="card narrow">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button type="submit">{% if project %}Guardar cambios{% else %}Crear proyecto{% endif %}</button>
+  <a href="{% if project %}{% url 'project_detail' project.pk %}{% else %}{% url 'company_list' %}{% endif %}">Cancelar</a>
+</form>
+{% endblock %}

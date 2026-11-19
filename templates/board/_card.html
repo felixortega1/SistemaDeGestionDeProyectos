@@ -1,0 +1,25 @@
+<article class="card task-card" data-task-id="{{ task.pk }}" data-allowed="{{ task.allowed_ids }}" data-move-url="{% url 'task_move' task.pk %}">
+  <strong><a class="card-title" href="{% url 'task_detail' task.pk %}">{{ task.title }}</a></strong>
+  <div class="muted small">{{ task.assignee.display_name|default:"Sin responsable" }}{% if task.estimate_points is not None %} · {{ task.estimate_points }} pts{% endif %}</div>
+  {% if task.allowed %}
+  <form method="post" action="{% url 'task_move' task.pk %}" class="move-form">{% csrf_token %}
+    <select name="column_id" aria-label="Mover a…">
+      {% for c in task.allowed %}<option value="{{ c.pk }}">{{ c.name }}</option>{% endfor %}
+    </select>
+    <button type="submit">Mover a…</button>
+  </form>
+  {% endif %}
+  <details class="card-comments"{% if task.pk == open_task %} open{% endif %}>
+    <summary>Comentarios ({{ task.comment_count }})</summary>
+    {% if task.recent_comments %}
+    <ul class="mini-comments">
+      {% for c in task.recent_comments %}<li><strong>{{ c.author.display_name }}:</strong> {{ c.body|truncatechars:160 }}</li>{% endfor %}
+    </ul>
+    {% if task.comment_count > 3 %}<a class="small" href="{% url 'task_detail' task.pk %}#comentarios">Ver los {{ task.comment_count }} comentarios</a>{% endif %}
+    {% endif %}
+    <form method="post" action="{% url 'board_comment' task.pk %}" hx-post="{% url 'board_comment' task.pk %}" hx-target="#board" hx-swap="outerHTML">{% csrf_token %}
+      <textarea name="body" rows="2" placeholder="Escribe un comentario…" aria-label="Comentario para {{ task.title }}" required></textarea>
+      <button type="submit">Comentar</button>
+    </form>
+  </details>
+</article>

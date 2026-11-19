@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}{{ task.title }}{% endblock %}
+{% block content %}
+<h1>{{ task.get_kind_display }}: {{ task.title }}</h1>
+<p class="muted">
+  {% if task.sprint %}Sprint: {{ task.sprint.name }} · Columna: {{ task.column.name }}{% else %}Sin sprint{% endif %}
+</p>
+<form method="post" class="card narrow">{% csrf_token %}{{ form.as_p }}<button type="submit">Guardar</button> <a href="{% url 'backlog' project.pk %}">Volver</a></form>
+
+{% if task.kind == 'task' %}
+<h2>Dependencias (fin a inicio)</h2>
+<ul>
+  {% for d in dependencies %}
+  <li>Depende de «{{ d.depends_on.title }}»
+    {% if can_edit_deps %}<form method="post" action="{% url 'dependency_delete' task.pk d.pk %}" class="inline">{% csrf_token %}<button type="submit" class="danger">Quitar</button></form>{% endif %}</li>
+  {% empty %}<li class="muted">Sin dependencias.</li>{% endfor %}
+</ul>
+{% if can_edit_deps %}
+<form method="post" action="{% url 'dependency_add' task.pk %}" class="card narrow">{% csrf_token %}{{ dep_form.as_p }}<button type="submit">Añadir dependencia</button></form>
+{% endif %}
+{% endif %}
+{% endblock %}

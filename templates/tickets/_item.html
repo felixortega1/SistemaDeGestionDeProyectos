@@ -1,0 +1,21 @@
+<li class="tk-item{% if t.status == 'done' %} is-done{% endif %}">
+  <form method="post" action="{% url 'ticket_toggle' t.pk %}"{% if ajax %} hx-post="{% url 'ticket_toggle' t.pk %}" hx-target="#tickets-body"{% endif %}>
+    {% csrf_token %}<input type="hidden" name="filter" value="{{ company_filter }}">
+    <button type="submit" class="tk-check" aria-label="{% if t.status == 'done' %}Reabrir{% else %}Marcar como hecho{% endif %}: {{ t.title }}">{% if t.status == 'done' %}✓{% endif %}</button>
+  </form>
+  <div class="tk-text">
+    <span class="tk-title">{{ t.title }}</span>
+    <span class="tk-meta">
+      <span class="tag">{{ t.company.name }}</span>
+      {% if t.date != today %}<span class="tag late">desde {{ t.date|date:"j M" }}</span>{% endif %}
+      {% if t.assigned_by_other %}<span class="muted small">de {{ t.created_by.display_name }}</span>{% endif %}
+    </span>
+    {% if t.description %}<span class="small muted">{{ t.description|truncatechars:120 }}</span>{% endif %}
+  </div>
+  {% if t.can_delete %}
+  <form method="post" action="{% url 'ticket_delete' t.pk %}"{% if ajax %} hx-post="{% url 'ticket_delete' t.pk %}" hx-target="#tickets-body" hx-confirm="¿Borrar este ticket?"{% endif %}>
+    {% csrf_token %}<input type="hidden" name="filter" value="{{ company_filter }}">
+    <button type="submit" class="tk-del" aria-label="Borrar: {{ t.title }}">×</button>
+  </form>
+  {% endif %}
+</li>

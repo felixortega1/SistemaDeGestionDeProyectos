@@ -1,0 +1,14 @@
+*.pyc
+.claude/
+.coverage
+.env
+.env.sqlite.bak
+.pytest_cache/
+.ruff_cache/
+.venv/
+__pycache__/
+db.sqlite3
+htmlcov/
+mysql-data/
+setup-mysql.sql
+staticfiles/

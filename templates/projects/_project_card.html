@@ -1,0 +1,21 @@
+<li class="card project-card">
+  <a class="project-title" href="{% url 'project_detail' p.pk %}">{{ p.name }}</a>
+  {% if show_company and p.company %}<span class="muted small">{{ p.company.name }}</span>{% endif %}
+  <p class="dates">    {% if p.start_date %}{{ p.start_date|date:"d/m/Y" }}{% else %}sin inicio{% endif %}
+    <span aria-hidden="true">→</span>
+    {% if p.end_date %}{{ p.end_date|date:"d/m/Y" }}{% else %}sin fin{% endif %}</p>
+  <div class="objectives">
+    <span class="small muted">Objetivos principales</span>
+    {% if p.objective_list %}
+    <ol>{% for o in p.objective_list %}<li>{{ o }}</li>{% endfor %}</ol>
+    {% else %}
+    <p class="muted small">Aún no tiene objetivos. Defínelos en «Editar proyecto».</p>
+    {% endif %}
+  </div>
+  <div class="meter" aria-hidden="true"><i style="width:{{ p.percent }}%"></i></div>
+  <div class="proj-meta">
+    <span class="tag">{{ p.role_label }}</span>
+    {% if p.active_sprint %}<span class="muted small tabular">{{ p.active_sprint.name }} · {{ p.done }} / {{ p.total }}</span>
+    {% else %}<span class="muted small">Sin sprint activo</span>{% endif %}
+  </div>
+</li>

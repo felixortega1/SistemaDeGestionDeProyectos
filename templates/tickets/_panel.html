@@ -1,0 +1,60 @@
+{% if ajax %}<span id="tickets-count" hx-swap-oob="true" class="count-badge"{% if not open_count %} hidden{% endif %}>{{ open_count }}</span>{% endif %}
+<div class="tk">
+  <p class="muted small tk-date">{{ today|date:"l j \d\e F" }}</p>
+
+  {% if message %}<p class="messages-inline {{ message_level }}" role="alert">{{ message }}</p>{% endif %}
+
+  {% if not companies %}
+  <p class="muted">Todavía no participas en ninguna empresa. Cuando tengas un proyecto, aquí podrás llevar tus pendientes del día.</p>
+  {% else %}
+
+  <form class="tk-filter" method="get" action="{% url 'tickets_page' %}"{% if ajax %} hx-get="{% url 'tickets_panel' %}" hx-trigger="change" hx-target="#tickets-body"{% endif %}>
+    <label class="small muted" for="tk-company-filter">Empresa</label>
+    <select id="tk-company-filter" name="company">
+      <option value="">Todas mis empresas</option>
+      {% for c in companies %}<option value="{{ c.pk }}"{% if company_filter == c.pk|stringformat:"s" %} selected{% endif %}>{{ c.name }}</option>{% endfor %}
+    </select>
+    {% if not ajax %}<button type="submit">Filtrar</button>{% endif %}
+  </form>
+
+  <details class="tk-new"{% if form.errors %} open{% endif %}>
+    <summary>Nuevo ticket</summary>
+    <form method="post" action="{% url 'ticket_new' %}" data-managers="{{ manager_ids }}"{% if ajax %} hx-post="{% url 'ticket_new' %}" hx-target="#tickets-body"{% endif %}>
+      {% csrf_token %}
+      <input type="hidden" name="filter" value="{{ company_filter }}">
+      <label for="tk-title">{{ form.title.label }}</label>
+      <input id="tk-title" name="title" maxlength="200" required value="{{ form.title.value|default:'' }}">
+      <label for="tk-company">Empresa</label>
+      <select id="tk-company" name="company" required>
+        {% for c in companies %}<option value="{{ c.pk }}"{% if form.company.value|stringformat:"s" == c.pk|stringformat:"s" %} selected{% endif %}>{{ c.name }}</option>{% endfor %}
+      </select>
+      <label for="tk-date">Día</label>
+      <input id="tk-date" name="date" type="date" value="{{ form.date.value|default:today|date:'Y-m-d' }}">
+      <div class="assignee-field" hidden>
+        <label for="tk-assignee">Asignar a</label>
+        <select id="tk-assignee" name="assignee">
+          <option value="">Yo</option>
+          {% for a in assignees %}<option value="{{ a.user.pk }}" data-companies="{{ a.companies }}">{{ a.user.display_name }}</option>{% endfor %}
+        </select>
+        <p class="small muted">Solo el Product Owner, el Project Manager y el Scrum Master pueden asignar tickets a otras personas.</p>
+      </div>
+      <button type="submit">Crear ticket</button>
+    </form>
+  </details>
+
+  <h3>Pendientes <span class="muted small">({{ pending|length }})</span></h3>
+  {% if pending %}
+  <ul class="tk-list">
+    {% for t in pending %}{% include "tickets/_item.html" %}{% endfor %}
+  </ul>
+  {% else %}<p class="muted small">Nada pendiente. ¡Buen trabajo!</p>{% endif %}
+
+  {% if done %}
+  <h3>Hechos hoy <span class="muted small">({{ done|length }})</span></h3>
+  <ul class="tk-list">
+    {% for t in done %}{% include "tickets/_item.html" %}{% endfor %}
+  </ul>
+  {% endif %}
+
+  {% endif %}
+</div>

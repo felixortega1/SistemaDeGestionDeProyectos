@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}{{ company.name }}{% endblock %}
+{% block content %}
+<nav class="crumbs" aria-label="Ruta"><a href="{% url 'company_list' %}">Empresas</a> <span>›</span> <span>{{ company.name }}</span></nav>
+<div class="page-head">
+  <h1>{{ company.name }}</h1>
+  <a class="button" href="{% url 'project_new' %}?company={{ company.pk }}">Nuevo proyecto</a>
+</div>
+<p class="muted">Tus proyectos en esta empresa, con sus fechas y sus objetivos principales.</p>
+<ul class="cards">
+  {% for p in projects %}{% include "projects/_project_card.html" %}{% endfor %}
+</ul>
+{% endblock %}

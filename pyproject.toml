@@ -1,0 +1,11 @@
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings"
+testpaths = ["tests"]
+env = ["SECRET_KEY=test-only-key", "DEBUG=true"]
+
+[tool.ruff]
+line-length = 130
+extend-exclude = ["migrations", ".venv", "static"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

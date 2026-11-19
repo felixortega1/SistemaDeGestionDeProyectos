@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Miembros{% endblock %}
+{% block content %}
+<h1>Miembros</h1>
+<table>
+  <tr><th>Persona</th><th>Rol</th>{% if is_po %}<th>Acciones</th>{% endif %}</tr>
+  {% for m in members %}
+  <tr>
+    <td>{{ m.user.display_name }} <span class="muted">{{ m.user.email }}</span></td>
+    <td>{{ m.get_role_display }}</td>
+    {% if is_po %}
+    <td>
+      {% if m.role != 'product_owner' %}
+      <form method="post" action="{% url 'member_role' project.pk m.user_id %}" class="inline">{% csrf_token %}
+        <select name="role">
+          <option value="project_manager" {% if m.role == 'project_manager' %}selected{% endif %}>Project Manager</option>
+          <option value="scrum_master" {% if m.role == 'scrum_master' %}selected{% endif %}>Scrum Master</option>
+          <option value="developer" {% if m.role == 'developer' %}selected{% endif %}>Equipo de desarrollo</option>
+        </select>
+        <button type="submit">Cambiar</button>
+      </form>
+      <form method="post" action="{% url 'member_remove' project.pk m.user_id %}" class="inline">{% csrf_token %}
+        <button type="submit" class="danger">Quitar</button></form>
+      <form method="post" action="{% url 'transfer_po' project.pk %}" class="inline">{% csrf_token %}
+        <input type="hidden" name="user_id" value="{{ m.user_id }}">
+        <select name="outgoing_role" title="Rol del Product Owner saliente">
+          <option value="project_manager">Yo paso a Project Manager</option>
+          <option value="scrum_master">Yo paso a Scrum Master</option>
+          <option value="developer">Yo paso a desarrollo</option>
+        </select>
+        <button type="submit">Hacer Product Owner</button>
+      </form>
+      {% endif %}
+    </td>
+    {% endif %}
+  </tr>
+  {% endfor %}
+</table>
+{% if is_po %}
+<h2>Añadir miembro</h2>
+<form method="post" action="{% url 'member_add' project.pk %}" class="card narrow">
+  {% csrf_token %}{{ add_form.as_p }}<button type="submit">Añadir</button>
+</form>
+{% endif %}
+{% endblock %}

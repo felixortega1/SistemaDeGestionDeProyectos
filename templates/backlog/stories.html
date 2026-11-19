@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Historias{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Historias</h1>
+</div>
+<p class="muted">Cada historia es algo que alguien necesita del proyecto. Entra en una para ver sus actividades y comentar.</p>
+
+{% if project.objective_list %}
+<div class="card objectives-banner">
+  <span class="small muted">Objetivos del proyecto</span>
+  <ol>{% for o in project.objective_list %}<li>{{ o }}</li>{% endfor %}</ol>
+  <p class="dates small">    {{ project.start_date|date:"d/m/Y" }} → {{ project.end_date|date:"d/m/Y" }}
+    {% if is_po %}· <a href="{% url 'project_edit' project.pk %}">Editar proyecto</a>{% endif %}</p>
+</div>
+{% elif is_po %}
+<p class="muted small">Este proyecto aún no tiene objetivos. <a href="{% url 'project_edit' project.pk %}">Defínelos aquí</a>.</p>
+{% endif %}
+
+{% if not can_create %}
+<p class="notice">Las historias las crean el Product Owner{% if product_owner %} ({{ product_owner.display_name }}){% endif %}, el Project Manager y el Scrum Master. Si necesitas una nueva, pídesela a alguno de ellos o coméntala en las historias existentes.</p>
+{% endif %}
+{% if can_create %}
+<details {% if story_form.errors %}open{% endif %}>
+  <summary>Nueva historia</summary>
+  <form method="post" action="{% url 'story_new' project.pk %}" class="card narrow">{% csrf_token %}{{ story_form.as_p }}<button type="submit">Crear historia</button></form>
+</details>
+{% endif %}
+
+{% if stories %}
+<ul class="cards">
+  {% for s in stories %}
+  <li class="card story-card">
+    <a class="project-title" href="{% url 'task_detail' s.pk %}">{{ s.title }}</a>
+    {% if s.stakeholder %}<span class="muted small">{{ s.stakeholder }}</span>{% endif %}
+    <div class="meter" aria-hidden="true"><i style="width:{{ s.percent }}%"></i></div>
+    <div class="proj-meta">
+      <span class="muted small tabular">{{ s.done }} de {{ s.total }} actividad{{ s.total|pluralize:"es" }} lista{{ s.done|pluralize }}</span>
+      {% if s.total and s.unassigned %}<span class="tag status-planned">{{ s.unassigned }} sin sprint</span>{% endif %}
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<div class="card narrow"><p class="muted" style="margin:0">Todavía no hay historias.{% if can_create %} Crea la primera con «Nueva historia».{% endif %}</p></div>
+{% endif %}
+{% if loose_count %}<p class="muted small">Además hay {{ loose_count }} actividad{{ loose_count|pluralize:"es" }} sin historia en el <a href="{% url 'backlog' project.pk %}">Backlog</a>.</p>{% endif %}
+{% endblock %}

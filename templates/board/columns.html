@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Columnas{% endblock %}
+{% block content %}
+<h1>Columnas, WIP y transiciones</h1>
+<p class="muted">Las columnas se ordenan de izquierda a derecha; la última es la de terminadas. Las columnas no se pueden borrar.</p>
+
+{% for c in columns %}
+<section class="card">
+  <h3>{{ c.name }}{% if c.is_done %} <span class="tag">terminadas</span>{% endif %}</h3>
+  <form method="post" action="{% url 'column_edit' c.pk %}">{% csrf_token %}{{ c.form.as_p }}<button type="submit">Guardar columna</button></form>
+</section>
+{% endfor %}
+
+<details {% if new_form.errors %}open{% endif %}>
+  <summary>Nueva columna (se inserta antes de la de terminadas)</summary>
+  <form method="post" action="{% url 'column_new' project.pk %}" class="card narrow">{% csrf_token %}{{ new_form.as_p }}<button type="submit">Crear columna</button></form>
+</details>
+
+<h2>Transiciones permitidas</h2>
+<form method="post" action="{% url 'transitions' project.pk %}" class="card">{% csrf_token %}
+  <table>
+    <tr><th>Desde ↓ / Hacia →</th>{% for c in columns %}<th>{{ c.name }}</th>{% endfor %}</tr>
+    {% for c in columns %}
+    <tr><th>{{ c.name }}</th>
+      {% for o in columns %}
+      <td>{% if o.pk == c.pk %}—{% else %}{% for target, on in c.matrix %}{% if target.pk == o.pk %}
+        <input type="checkbox" name="transition" value="{{ c.pk }}_{{ o.pk }}" {% if on %}checked{% endif %}>{% endif %}{% endfor %}{% endif %}</td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </table>
+  <button type="submit">Guardar transiciones</button>
+</form>
+{% endblock %}

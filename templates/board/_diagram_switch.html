@@ -1,0 +1,4 @@
+<div class="switch" role="tablist" aria-label="Tipo de diagrama">
+  <a href="{% url 'board' project.pk %}" class="switch-btn{% if current == 'kanban' %} active{% endif %}" role="tab" aria-selected="{% if current == 'kanban' %}true{% else %}false{% endif %}">Kanban</a>
+  <a href="{% url 'gantt' project.pk %}" class="switch-btn{% if current == 'gantt' %} active{% endif %}" role="tab" aria-selected="{% if current == 'gantt' %}true{% else %}false{% endif %}">Gantt</a>
+</div>

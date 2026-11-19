@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}{{ task.title }}{% endblock %}
+{% block content %}
+<nav class="crumbs" aria-label="Ruta">
+  <a href="{% url 'stories' project.pk %}">Historias</a> <span>›</span>
+  {% if task.parent %}<a href="{% url 'task_detail' task.parent.pk %}">{{ task.parent.title }}</a> <span>›</span>{% endif %}
+  <span>{{ task.title }}</span>
+</nav>
+
+<div class="page-head">
+  <h1>{{ task.title }}</h1>
+  {% if can_edit %}<a class="button secondary" href="{% url 'task_edit' task.pk %}">Editar</a>{% endif %}
+</div>
+
+<p>
+  <span class="tag">{{ task.get_kind_display }}</span>
+  {% if task.stakeholder %}<span class="muted small">Pedida por {{ task.stakeholder }}</span>{% endif %}
+  {% if task.kind == 'task' %}
+    <span class="muted small">· Responsable: {{ task.assignee.display_name|default:"sin asignar" }}</span>
+    {% if task.estimate_points is not None %}<span class="muted small">· {{ task.estimate_points }} puntos</span>{% endif %}
+    {% if task.sprint %}<span class="tag status-active">{{ task.sprint.name }} · {{ task.column.name }}</span>{% else %}<span class="tag status-planned">Sin sprint</span>{% endif %}
+  {% endif %}
+</p>
+{% if task.description %}<p>{{ task.description|linebreaksbr }}</p>{% endif %}
+
+{% if task.kind == 'story' %}
+<h2>Actividades (backlog de esta historia)</h2>
+{% if children %}
+<table>
+  <tr><th>Actividad</th><th>Responsable</th><th>Estado</th></tr>
+  {% for c in children %}
+  <tr>
+    <td><a href="{% url 'task_detail' c.pk %}">{{ c.title }}</a></td>
+    <td>{{ c.assignee.display_name|default:"—" }}</td>
+    <td>{% if c.sprint %}<span class="tag status-active">{{ c.sprint.name }}</span> {{ c.column.name }}{% else %}<span class="tag status-planned">Sin sprint</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}<p class="muted">Esta historia aún no tiene actividades.</p>{% endif %}
+
+{% if can_create %}
+<details {% if activity_form.errors %}open{% endif %}>
+  <summary>Nueva actividad</summary>
+  <form method="post" action="{% url 'activity_new' task.pk %}" class="card narrow">{% csrf_token %}{{ activity_form.as_p }}<button type="submit">Crear actividad</button></form>
+</details>
+{% endif %}
+
+{% if can_assign_sprint and children and open_sprints %}
+<h2>Asignar a un sprint</h2>
+<p class="muted small">Pone en el sprint elegido todas las actividades de esta historia que aún no tienen sprint.</p>
+<form method="post" action="{% url 'story_assign_sprint' task.pk %}" class="inline">{% csrf_token %}
+  <select name="sprint_id">{% for s in open_sprints %}<option value="{{ s.pk }}">{{ s.name }} ({{ s.get_status_display }})</option>{% endfor %}</select>
+  <button type="submit">Asignar toda la historia</button>
+</form>
+{% endif %}
+
+{% else %}
+{% if dependencies %}
+<h2>Depende de</h2>
+<ul>{% for d in dependencies %}<li><a href="{% url 'task_detail' d.depends_on.pk %}">{{ d.depends_on.title }}</a></li>{% endfor %}</ul>
+{% endif %}
+{% if can_assign_sprint and not task.sprint and open_sprints %}
+<h2>Asignar a un sprint</h2>
+<form method="post" action="{% url 'task_assign_sprint' task.pk %}" class="inline">{% csrf_token %}
+  <input type="hidden" name="next" value="{{ request.path }}">
+  <select name="sprint_id">{% for s in open_sprints %}<option value="{{ s.pk }}">{{ s.name }} ({{ s.get_status_display }})</option>{% endfor %}</select>
+  <button type="submit">Asignar al sprint</button>
+</form>
+{% endif %}
+{% endif %}
+
+<h2 id="comentarios">Comentarios</h2>
+<ul class="comments">
+  {% for c in comments %}
+  <li class="comment">
+    <div class="comment-head">
+      <span class="avatar" aria-hidden="true">{{ c.author.display_name|slice:":2"|upper }}</span>
+      <strong>{{ c.author.display_name }}</strong>
+      <span class="muted small">{{ c.created_at|date:"d/m/Y H:i" }}</span>
+      {% if c.author_id == user.pk or is_po %}
+      <form method="post" action="{% url 'comment_delete' c.pk %}" class="inline">{% csrf_token %}<button type="submit" class="link small">Borrar</button></form>
+      {% endif %}
+    </div>
+    <p>{{ c.body|linebreaksbr }}</p>
+  </li>
+  {% empty %}<li class="muted">Todavía no hay comentarios. Sé el primero en escribir.</li>{% endfor %}
+</ul>
+<form method="post" action="{% url 'comment_add' task.pk %}" class="card narrow">{% csrf_token %}{{ comment_form.as_p }}<button type="submit">Comentar</button></form>
+{% endblock %}

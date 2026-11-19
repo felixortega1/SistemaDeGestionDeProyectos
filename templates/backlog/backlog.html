@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Backlog{% endblock %}
+{% block content %}
+<h1>Backlog</h1>
+
+{% if is_po %}
+<details {% if task_form.errors %}open{% endif %}>
+  <summary>Nueva historia o tarea</summary>
+  <form method="post" action="{% url 'task_new' project.pk %}" class="card">{% csrf_token %}{{ task_form.as_p }}<button type="submit">Crear</button></form>
+</details>
+{% endif %}
+
+<h2>Tareas sin sprint (product backlog)</h2>
+{% if backlog_tasks %}
+<table>
+  <tr><th>Tarea</th><th>Responsable</th><th>Puntos</th><th>Fechas propias</th><th></th></tr>
+  {% for t in backlog_tasks %}
+  <tr>
+    <td><a href="{% url 'task_detail' t.pk %}">{{ t.title }}</a>{% if t.parent %} <span class="muted">↳ {{ t.parent.title }}</span>{% endif %}</td>
+    <td>{{ t.assignee.display_name|default:"—" }}</td>
+    <td>{{ t.estimate_points|default_if_none:"—" }}</td>
+    <td>{% if t.start_date or t.due_date %}{{ t.start_date|default_if_none:"?" }} → {{ t.due_date|default_if_none:"?" }}{% else %}—{% endif %}</td>
+    <td>
+      {% if can_assign_sprint and open_sprints %}
+      <form method="post" action="{% url 'task_assign_sprint' t.pk %}" class="inline">{% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.path }}">
+        <select name="sprint_id">{% for s in open_sprints %}<option value="{{ s.pk }}">{{ s.name }} ({{ s.get_status_display }})</option>{% endfor %}</select>
+        <button type="submit">Asignar a sprint</button>
+      </form>
+      {% endif %}
+      {% if is_po %}<form method="post" action="{% url 'task_delete' t.pk %}" class="inline">{% csrf_token %}<button type="submit" class="danger">Borrar</button></form>{% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}<p class="muted">No hay tareas sin sprint.</p>{% endif %}
+
+<h2>Tareas en sprints</h2>
+{% if sprint_tasks %}
+<table>
+  <tr><th>Tarea</th><th>Sprint</th><th>Responsable</th></tr>
+  {% for t in sprint_tasks %}
+  <tr><td><a href="{% url 'task_detail' t.pk %}">{{ t.title }}</a></td><td>{{ t.sprint.name }} ({{ t.sprint.get_status_display }})</td><td>{{ t.assignee.display_name|default:"—" }}</td></tr>
+  {% endfor %}
+</table>
+{% else %}<p class="muted">Ninguna.</p>{% endif %}
+
+<h2>Historias</h2>
+{% for s in stories %}
+<div class="card">
+  <strong><a href="{% url 'task_detail' s.pk %}">{{ s.title }}</a></strong>
+  {% if s.child_list %}<ul>{% for c in s.child_list %}<li><a href="{% url 'task_detail' c.pk %}">{{ c.title }}</a> <span class="muted">{% if c.sprint %}{{ c.sprint.name }}{% else %}backlog{% endif %}</span></li>{% endfor %}</ul>{% endif %}
+  {% if is_po %}<form method="post" action="{% url 'task_delete' s.pk %}" class="inline">{% csrf_token %}<button type="submit" class="danger">Borrar</button></form>{% endif %}
+</div>
+{% empty %}<p class="muted">No hay historias.</p>{% endfor %}
+
+<div class="two-col">
+  <section>
+    <h2>Hitos</h2>
+    <ul>{% for m in milestones %}<li>{{ m.date|date:"Y-m-d" }} — {{ m.name }}</li>{% empty %}<li class="muted">Ninguno.</li>{% endfor %}</ul>
+    {% if is_po %}<form method="post" action="{% url 'milestone_new' project.pk %}" class="card">{% csrf_token %}{{ milestone_form.as_p }}<button type="submit">Crear hito</button></form>{% endif %}
+  </section>
+</div>
+{% endblock %}

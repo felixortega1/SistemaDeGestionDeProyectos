@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Gantt · {{ project.name }}{% endblock %}
+{% block content %}
+{% include "board/_diagram_switch.html" with current="gantt" %}
+
+<header class="gantt-head card">
+  <div>
+    <span class="small muted">{% if project.company %}{{ project.company.name }} · {% endif %}Diagrama de Gantt</span>
+    <h1 class="gantt-title">{{ project.name }}</h1>
+    {% if project.start_date %}<p class="dates">{{ project.start_date|date:"d/m/Y" }} → {{ project.end_date|date:"d/m/Y" }}</p>{% endif %}
+  </div>
+  {% if project.objective_list %}
+  <ol class="gantt-objectives">{% for o in project.objective_list %}<li>{{ o }}</li>{% endfor %}</ol>
+  {% endif %}
+</header>
+
+<div class="gantt-toolbar">
+  <div class="legend" aria-label="Leyenda">
+    <span class="legend-item"><i class="dot dot-normal"></i>Normal</span>
+    <span class="legend-item"><i class="dot dot-late"></i>Retrasada</span>
+    <span class="legend-item"><i class="dot dot-conflict"></i>Conflicto de dependencia</span>
+    <span class="legend-item"><i class="dot dot-milestone"></i>Hito</span>
+  </div>
+  <div class="zoom" role="group" aria-label="Escala de tiempo">
+    <button type="button" class="zoom-btn" data-mode="Day">Día</button>
+    <button type="button" class="zoom-btn" data-mode="Week">Semana</button>
+    <button type="button" class="zoom-btn" data-mode="Month">Mes</button>
+  </div>
+</div>
+
+<div id="gantt-container"></div>
+{{ data|json_script:"gantt-data" }}
+
+<h2>Tareas dibujadas</h2>
+<table>
+  <tr><th>Tarea</th><th>Inicio</th><th>Fin</th><th>Marcas</th></tr>
+  {% for t in data.tasks %}
+  <tr><td>{{ t.title }}</td><td>{{ t.start }} <span class="muted">({{ t.start_source }})</span></td><td>{{ t.end }} <span class="muted">({{ t.end_source }})</span></td>
+    <td>{% if t.is_late %}<span class="tag late">retrasada</span>{% endif %}{% if t.conflict %} <span class="tag conflict">conflicto</span>{% endif %}</td></tr>
+  {% empty %}<tr><td colspan="4" class="muted">Ninguna tarea tiene fechas efectivas.</td></tr>{% endfor %}
+</table>
+
+<h2>Sin fechas</h2>
+<ul>{% for u in data.undated %}<li>{{ u.title }} — {{ u.reason }}</li>{% empty %}<li class="muted">Ninguna.</li>{% endfor %}</ul>
+
+<h2>Hitos</h2>
+<ul>{% for m in data.milestones %}<li>{{ m.date }} — {{ m.name }}</li>{% empty %}<li class="muted">Ninguno.</li>{% endfor %}</ul>
+{% endblock %}
+{% block scripts %}
+<link rel="stylesheet" href="{% static 'vendor/frappe-gantt/frappe-gantt.css' %}">
+<script src="{% static 'vendor/frappe-gantt/frappe-gantt.umd.js' %}"></script>
+<script src="{% static 'js/gantt.js' %}"></script>
+{% endblock %}
