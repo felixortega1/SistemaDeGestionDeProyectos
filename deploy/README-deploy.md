@@ -1,71 +1,110 @@
-# Deploy en el VPS (Ubuntu 24.04, Python 3.12, MySQL 8.0.46 compartido, nginx + certbot, systemd)
+# Deploy de gestion_proyectos en el VPS (patron de la guia del servidor)
 
-Sigue el patron de aislamiento de Ruteame: usuario, carpeta, venv, servicio, env, base y puerto propios.
-Valores a confirmar antes: dominio, puerto libre (`ss -tlnp`; 8001/8002 ya ocupados, aqui 8003) y contrasenas.
+Valores: `PROYECTO=gestion_proyectos` · `DOMINIO=proyectos.walkcode.pe` (sin www) · `PUERTO=8003` · `MODULO=config`
+· `REPO=git@github.com:felixortega1/SistemaDeGestionDeProyectos.git` · rama `feature/story-task-split` (luego `main`).
+Esta app lee variables `MYSQL_*` (no `DB_*`); `STATIC_ROOT` es `/opt/gestion_proyectos/staticfiles` por defecto; no usa media de usuarios.
 
-## 0. Validar ANTES en local con MySQL 8.0 (obligatorio)
-Opcion recomendada en esta maquina: MySQL80 ya instalado (puerto 3307) -> seguir `docs/levantar-local.md`.
-Opcion A, sin Docker (recomendada, identica al servidor): WSL2 con Ubuntu 24.04.
+Validado en local: `makemigrations --check` sin cambios, `ruff` limpio, `pytest` 170 passed (91 %).
+
+## 0. Revisar el servidor (solo lectura)
 ```bash
-# en PowerShell (una vez): wsl --install -d Ubuntu-24.04
-# dentro de Ubuntu, en la carpeta del proyecto (ej. /mnt/c/xampp/htdocs/gestion_proyectos):
-bash deploy/local-setup-wsl.sh      # instala python3.12 + mysql-server 8.0, crea base/usuario y venv, corre migrate y pytest
+free -h; df -h /; python3.12 --version; mysql --version; nginx -v
+ss -tlnp | grep -E ':(80|443|3306|3307|800[0-9])\b'
+ls /etc/nginx/sites-enabled
 ```
-Opcion B, con Docker: `docker compose up -d` (el compose ya usa mysql:8.0.46; si hubo volumen 8.4, `docker compose down -v` antes).
-Opcion C, Windows nativo: instalar MySQL Community 8.0.x (NO usar el MariaDB de XAMPP).
-
-Criterio de OK: `migrate` sin errores y `pytest` en verde (la prueba de concurrencia WIP no debe omitirse).
-
-## 1. Paquetes de compilacion (no cambian servicios existentes)
+## 1. Paquetes
 ```bash
-sudo apt install -y python3.12-venv python3.12-dev build-essential pkg-config libmysqlclient-dev git
+sudo apt update
+sudo apt install -y git build-essential pkg-config libmysqlclient-dev python3.12-venv python3.12-dev
 ```
-
-## 2. Usuario y codigo
+## 2. Usuario y carpetas
 ```bash
-sudo useradd --system --create-home --home-dir /opt/gestion --shell /usr/sbin/nologin gestion
-sudo -u gestion git clone https://github.com/felixortega1/SistemaDeGestionDeProyectos.git /opt/gestion
-cd /opt/gestion && sudo -u gestion python3.12 -m venv .venv
-sudo -u gestion .venv/bin/pip install -r requirements.txt
+sudo adduser --system --group --home /home/gestion_proyectos --shell /usr/sbin/nologin gestion_proyectos
+sudo mkdir -p /opt/gestion_proyectos /var/lib/gestion_proyectos /etc/gestion_proyectos
+sudo chown gestion_proyectos:gestion_proyectos /opt/gestion_proyectos
+sudo chown -R gestion_proyectos:gestion_proyectos /var/lib/gestion_proyectos && sudo chmod 750 /var/lib/gestion_proyectos
+sudo chown root:gestion_proyectos /etc/gestion_proyectos && sudo chmod 750 /etc/gestion_proyectos
 ```
-(Si el directorio ya existe por `--create-home`, clonar en carpeta temporal o usar `--no-create-home` y `mkdir`.)
-
-## 3. Base de datos propia
-Editar contrasena en `deploy/create_db.sql` y: `sudo mysql < deploy/create_db.sql`
-
-## 4. Variables
+## 3. Codigo (deploy key de solo lectura)
 ```bash
-sudo mkdir -p /etc/gestion
-sudo cp deploy/gestion.env.example /etc/gestion/gestion.env   # editar valores reales
-sudo chown root:gestion /etc/gestion/gestion.env && sudo chmod 640 /etc/gestion/gestion.env
+sudo -u gestion_proyectos mkdir -p -m 700 /home/gestion_proyectos/.ssh
+sudo -u gestion_proyectos ssh-keygen -t ed25519 -N "" -C "gestion_proyectos-vps" -f /home/gestion_proyectos/.ssh/id_ed25519
+sudo -u gestion_proyectos sh -c 'ssh-keyscan github.com >> /home/gestion_proyectos/.ssh/known_hosts'
+sudo cat /home/gestion_proyectos/.ssh/id_ed25519.pub
 ```
-
-## 5. Inicializar
+GitHub → repo → Settings → Deploy keys → Add (sin "Allow write access"). Luego:
 ```bash
-set -a; source /etc/gestion/gestion.env; set +a
-sudo -E -u gestion .venv/bin/python manage.py migrate
-sudo -E -u gestion .venv/bin/python manage.py collectstatic --noinput
-sudo -E -u gestion .venv/bin/python manage.py createsuperuser
+sudo -u gestion_proyectos git clone -b feature/story-task-split git@github.com:felixortega1/SistemaDeGestionDeProyectos.git /opt/gestion_proyectos
 ```
-
-## 6. Servicio y nginx
+## 4. Entorno de Python
 ```bash
-sudo cp deploy/gestion.service /etc/systemd/system/ && sudo systemctl daemon-reload
-sudo systemctl enable --now gestion && systemctl status gestion
-sudo cp deploy/nginx-gestion.conf /etc/nginx/sites-available/gestion   # editar server_name
-sudo ln -s /etc/nginx/sites-available/gestion /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d gestion.TU-DOMINIO.com
+cd /opt/gestion_proyectos
+sudo -u gestion_proyectos python3.12 -m venv .venv
+sudo -u gestion_proyectos .venv/bin/pip install --upgrade pip
+sudo -u gestion_proyectos .venv/bin/pip install -r requirements.txt   # ya incluye gunicorn y mysqlclient
 ```
-Verificar: `curl -I https://gestion.TU-DOMINIO.com/accounts/login/` y `journalctl -u gestion -f`.
+## 5. Base de datos
+```bash
+openssl rand -base64 24            # guardar la clave
+nano deploy/create_db.sql          # reemplazar CLAVE_LARGA (dos veces, la misma)
+sudo mysql < deploy/create_db.sql
+```
+Produccion empieza limpia (sin datos de prueba).
+## 6. Variables de entorno
+```bash
+sudo cp deploy/gestion_proyectos.env.example /etc/gestion_proyectos/gestion_proyectos.env
+sudo nano /etc/gestion_proyectos/gestion_proyectos.env      # SECRET_KEY y MYSQL_PASSWORD
+sudo chown root:gestion_proyectos /etc/gestion_proyectos/gestion_proyectos.env
+sudo chmod 640 /etc/gestion_proyectos/gestion_proyectos.env
+```
+## 7. Migraciones, estaticos y primer usuario
+```bash
+cd /opt/gestion_proyectos
+sudo -u gestion_proyectos bash -c 'set -a; . /etc/gestion_proyectos/gestion_proyectos.env; set +a; .venv/bin/python manage.py migrate'
+sudo -u gestion_proyectos bash -c 'set -a; . /etc/gestion_proyectos/gestion_proyectos.env; set +a; .venv/bin/python manage.py collectstatic --noinput'
+sudo -u gestion_proyectos bash -c 'set -a; . /etc/gestion_proyectos/gestion_proyectos.env; set +a; .venv/bin/python manage.py check --deploy'
+sudo -u gestion_proyectos bash -c 'set -a; . /etc/gestion_proyectos/gestion_proyectos.env; set +a; .venv/bin/python manage.py createsuperuser'
+```
+## 8. Servicio
+```bash
+sudo cp deploy/gestion_proyectos.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now gestion_proyectos
+sudo systemctl status gestion_proyectos --no-pager
+curl -sI http://127.0.0.1:8003/accounts/login/ | head -1
+```
+Si falla: `journalctl -u gestion_proyectos -n 80 --no-pager`.
+## 9. Nginx
+```bash
+sudo cp deploy/nginx-gestion_proyectos.conf /etc/nginx/sites-available/gestion_proyectos.conf
+sudo ln -s /etc/nginx/sites-available/gestion_proyectos.conf /etc/nginx/sites-enabled/gestion_proyectos.conf
+sudo nginx -t        # recargar solo si dice "syntax is ok"
+sudo systemctl reload nginx
+sudo -u www-data ls /opt/gestion_proyectos/staticfiles   # si "Permission denied": sudo chmod o+x /opt/gestion_proyectos
+curl -sI -H "Host: proyectos.walkcode.pe" http://127.0.0.1/accounts/login/ | head -1
+```
+## 10. HTTPS
+```bash
+dig +short proyectos.walkcode.pe        # debe dar 161.132.41.144
+sudo certbot --nginx -d proyectos.walkcode.pe
+sudo certbot renew --dry-run
+```
+## 11. Respaldos
+```bash
+sudo cp /opt/ruteame/deploy/respaldo.sh /usr/local/bin/gestion_proyectos-respaldo
+sudo nano /usr/local/bin/gestion_proyectos-respaldo   # BD=gestion_proyectos_db, DESTINO=/var/backups/gestion_proyectos; sin carpeta media
+sudo chmod 750 /usr/local/bin/gestion_proyectos-respaldo
+sudo /usr/local/bin/gestion_proyectos-respaldo && ls -lh /var/backups/gestion_proyectos
+echo '45 3 * * * root /usr/local/bin/gestion_proyectos-respaldo >> /var/log/gestion_proyectos-respaldo.log 2>&1' | sudo tee /etc/cron.d/gestion_proyectos-respaldo
+```
+Hora 03:45 (03:15 y 03:30 ya estan ocupadas). `actualizar.sh` llama a este respaldo, asi que hay que crearlo antes de la primera actualizacion.
+## 12. Actualizar
+`sudo chmod +x /opt/gestion_proyectos/deploy/actualizar.sh` y luego `sudo /opt/gestion_proyectos/deploy/actualizar.sh`
+(rama por defecto `feature/story-task-split`; cuando se fusione: `sudo RAMA=main ... ` o cambiar el valor en el script).
 
-## 7. Respaldos y seguridad
-- Agregar `gestion_app_db` al cron de respaldos existente (03:15/03:30).
-- ufw/fail2ban ya cubren 22/80/443; gunicorn escucha solo en 127.0.0.1.
-- Memoria: VPS de 4 GB compartido; usar `--workers 2`.
-
-## Actualizaciones
-`sudo bash /opt/gestion/deploy/deploy.sh`
-
-## Rollback
-`git -C /opt/gestion checkout <commit-anterior>` + `systemctl restart gestion` (migraciones hacia atras solo si es necesario: `manage.py migrate <app> <numero>`).
+## Dia a dia
+| Que | Comando |
+|---|---|
+| Ver errores | `journalctl -u gestion_proyectos -f` |
+| Reiniciar | `sudo systemctl restart gestion_proyectos` |
+| Volver atras | `cd /opt/gestion_proyectos && sudo -u gestion_proyectos git log --oneline -5`, `git checkout COMMIT`, reiniciar (si hubo migracion, restaurar antes el respaldo) |

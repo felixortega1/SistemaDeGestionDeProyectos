@@ -1,0 +1,25 @@
+[Unit]
+Description=gestion_proyectos (Django + gunicorn)
+After=network.target mysql.service
+Wants=mysql.service
+
+[Service]
+Type=simple
+User=gestion_proyectos
+Group=gestion_proyectos
+WorkingDirectory=/opt/gestion_proyectos
+EnvironmentFile=/etc/gestion_proyectos/gestion_proyectos.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/gestion_proyectos/.venv/bin/gunicorn config.wsgi:application --bind 127.0.0.1:8003 --workers 2 --timeout 60
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+LimitNOFILE=65535
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/gestion_proyectos
+
+[Install]
+WantedBy=multi-user.target
