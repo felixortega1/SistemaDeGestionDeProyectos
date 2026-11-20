@@ -87,6 +87,14 @@ def make_task(project):
 
 
 @pytest.fixture
+def make_story(project):
+    def _make(title="Historia", proj=None, **kw):
+        return backlog.create_story(proj or project, title=title, **kw)
+
+    return _make
+
+
+@pytest.fixture
 def today():
     return datetime.date.today()
 

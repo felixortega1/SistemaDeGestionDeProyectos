@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}{{ story.title }}{% endblock %}
+{% block content %}
+<nav class="crumbs" aria-label="Ruta">
+  <a href="{% url 'stories' project.pk %}">Historias</a> <span>›</span>
+  <span>{{ story.title }}</span>
+</nav>
+
+<div class="page-head">
+  <h1>{{ story.title }}</h1>
+  {% if can_edit %}<a class="button secondary" href="{% url 'story_edit' story.pk %}">Editar</a>{% endif %}
+</div>
+
+<p>
+  <span class="tag">Historia</span>
+  {% if story.priority == 'high' %}<span class="tag late">Prioridad alta</span>{% elif story.priority == 'low' %}<span class="tag status-closed">Prioridad baja</span>{% else %}<span class="tag status-closed">Prioridad media</span>{% endif %}
+  {% if story.epic %}<span class="tag"><span class="epic-dot" style="background:{{ story.epic.color }}" aria-hidden="true"></span> {{ story.epic.title }}</span>{% endif %}
+  {% if story.estimate_points is not None %}<span class="muted small">· {{ story.estimate_points }} puntos</span>{% endif %}
+  {% if story.stakeholder %}<span class="muted small">· Pedida por {{ story.stakeholder }}</span>{% endif %}
+</p>
+{% if story.description %}<p>{{ story.description|linebreaksbr }}</p>{% endif %}
+
+{% include "backlog/_criteria.html" %}
+
+<h2>Tareas de esta historia</h2>
+{% if tasks %}
+<table>
+  <tr><th>Tarea</th><th>Responsable</th><th>Puntos</th><th>Estado</th></tr>
+  {% for t in tasks %}
+  <tr>
+    <td><a href="{% url 'task_detail' t.pk %}">{{ t.title }}</a></td>
+    <td>{{ t.assignee.display_name|default:"—" }}</td>
+    <td>{{ t.estimate_points|default_if_none:"—" }}</td>
+    <td>{% if t.sprint %}<span class="tag status-active">{{ t.sprint.name }}</span> {{ t.column.name }}{% else %}<span class="tag status-planned">Sin sprint</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}<p class="muted">Esta historia aún no tiene tareas.</p>{% endif %}
+
+{% if can_create %}
+<details {% if task_form.errors %}open{% endif %}>
+  <summary>Nueva tarea</summary>
+  <form method="post" action="{% url 'story_task_new' story.pk %}" class="card narrow">{% csrf_token %}{{ task_form.as_p }}<button type="submit">Crear tarea</button></form>
+</details>
+{% endif %}
+
+{% if can_assign_sprint and tasks and open_sprints %}
+<h2>Asignar a un sprint</h2>
+<p class="muted small">Pone en el sprint elegido todas las tareas de esta historia que aún no tienen sprint.</p>
+<form method="post" action="{% url 'story_assign_sprint' story.pk %}" class="inline">{% csrf_token %}
+  <select name="sprint_id">{% for s in open_sprints %}<option value="{{ s.pk }}">{{ s.name }} ({{ s.get_status_display }})</option>{% endfor %}</select>
+  <button type="submit">Asignar toda la historia</button>
+</form>
+{% endif %}
+
+<h2 id="comentarios">Comentarios</h2>
+<ul class="comments">
+  {% for c in comments %}
+  <li class="comment">
+    <div class="comment-head">
+      <span class="avatar" aria-hidden="true">{{ c.author.display_name|slice:":2"|upper }}</span>
+      <strong>{{ c.author.display_name }}</strong>
+      <span class="muted small">{{ c.created_at|date:"d/m/Y H:i" }}</span>
+      {% if c.author_id == user.pk or is_po %}
+      <form method="post" action="{% url 'comment_delete' c.pk %}" class="inline">{% csrf_token %}<button type="submit" class="link small">Borrar</button></form>
+      {% endif %}
+    </div>
+    <p>{{ c.body|linebreaksbr }}</p>
+  </li>
+  {% empty %}<li class="muted">Todavía no hay comentarios. Sé el primero en escribir.</li>{% endfor %}
+</ul>
+<form method="post" action="{% url 'story_comment_add' story.pk %}" class="card narrow">{% csrf_token %}{{ comment_form.as_p }}<button type="submit">Comentar</button></form>
+{% endblock %}

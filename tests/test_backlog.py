@@ -10,7 +10,6 @@ from apps.sprints import services as sprint_services
 
 def test_dependency_rules(project, make_task, po):
     a, b, c = make_task("a"), make_task("b"), make_task("c")
-    story = make_task("hist", kind="story")
     services.add_dependency(b, a)
     services.add_dependency(c, b)
     with pytest.raises(Unprocessable):
@@ -19,20 +18,21 @@ def test_dependency_rules(project, make_task, po):
         services.add_dependency(a, a)
     with pytest.raises(Unprocessable):
         services.add_dependency(b, a)  # duplicado
-    with pytest.raises(Unprocessable):
-        services.add_dependency(a, story)
     other = project_services.create_project(po, "B")
     foreign = services.create_task(other, title="x")
     with pytest.raises(Unprocessable):
         services.add_dependency(a, foreign)
 
 
-def test_reference_validation(project, po, make_task):
-    task = make_task("t")
+def test_reference_validation(project, po, make_task, make_story):
+    other = project_services.create_project(po, "Otro")
+    foreign = services.create_story(other, title="Ajena")
     with pytest.raises(Unprocessable):
-        make_task("y", parent=task)  # el padre debe ser historia
+        make_task("y", story=foreign)  # la historia es de otro proyecto
     with pytest.raises(Unprocessable):
-        make_task("s", kind="story", due_date="2030-01-01")
+        make_story("   ")  # una historia necesita título
+    story = make_story("propia")
+    assert make_task("ok", story=story).story_id == story.pk
 
 
 def test_assignee_must_be_member(project, make_user, make_task):
@@ -48,15 +48,13 @@ def test_sprint_and_column_go_together(project, make_task):
 
 
 def test_assign_sprint_rules(project, make_task, columns, today):
-    t, story = make_task(), make_task("s", kind="story")
+    t = make_task()
     sprint = sprint_services.create_sprint(project, "S")
     services.assign_sprint(t, sprint)
     t.refresh_from_db()
     assert t.column_id == columns["Por hacer"].pk and t.sprint_id == sprint.pk
     with pytest.raises(Unprocessable):
         services.assign_sprint(t, sprint)  # ya tiene sprint
-    with pytest.raises(Unprocessable):
-        services.assign_sprint(story, sprint)
 
 
 def test_assign_to_closed_sprint_rejected(project, make_task, active_sprint):
@@ -75,13 +73,13 @@ def test_assign_active_sprint_with_wip_zero(project, make_task, active_sprint, c
         services.assign_sprint(make_task("otra"), sprint)
 
 
-def test_delete_protected(project, make_task, active_sprint):
-    parent = make_task("p", kind="story")
-    child = make_task("c", parent=parent)
+def test_delete_protected(project, make_task, make_story, active_sprint):
+    story = make_story("p")
+    child = make_task("c", story=story)
     with pytest.raises(Conflict):
-        services.delete_task(parent)
+        services.delete_story(story)  # tiene tareas
     services.delete_task(child)
-    services.delete_task(parent)
+    services.delete_story(story)
     sprint, (t, *_) = active_sprint(1)
     with pytest.raises(Conflict):
         services.delete_task(t)

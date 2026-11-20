@@ -1,0 +1,24 @@
+<section id="criteria" aria-live="polite">
+  <h2 id="criterios">Criterios de aceptación
+    <span class="muted small tabular">{{ criteria_done }} / {{ criteria_total }} cumplidos</span></h2>
+  {% if criteria_total %}<div class="meter" aria-hidden="true"><i style="width:{{ criteria_percent }}%"></i></div>{% endif %}
+  {% if criteria_error %}<p class="messages-inline error" role="alert">{{ criteria_error }}</p>{% endif %}
+  <ul class="criteria">
+    {% for c in criteria %}
+    <li class="criterion{% if c.is_done %} done{% endif %}">
+      <form method="post" action="{% url 'criterion_toggle' c.pk %}" hx-post="{% url 'criterion_toggle' c.pk %}" hx-trigger="change" hx-target="#criteria" hx-swap="outerHTML">{% csrf_token %}
+        <label><input type="checkbox"{% if c.is_done %} checked{% endif %}> <span>{{ c.text }}</span></label>
+        <noscript><button type="submit" class="link small">Cambiar</button></noscript>
+      </form>
+      {% if can_manage_criteria %}
+      <form method="post" action="{% url 'criterion_delete' c.pk %}" hx-post="{% url 'criterion_delete' c.pk %}" hx-target="#criteria" hx-swap="outerHTML" class="inline">{% csrf_token %}<button type="submit" class="link small">Quitar</button></form>
+      {% endif %}
+    </li>
+    {% empty %}<li class="muted">Esta historia aún no tiene criterios de aceptación.</li>{% endfor %}
+  </ul>
+  {% if can_manage_criteria %}
+  <form method="post" action="{% url 'criterion_add' story.pk %}" hx-post="{% url 'criterion_add' story.pk %}" hx-target="#criteria" hx-swap="outerHTML" class="inline">{% csrf_token %}
+    {{ criterion_form.text }}<button type="submit">Añadir criterio</button>
+  </form>
+  {% endif %}
+</section>

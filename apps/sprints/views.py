@@ -3,7 +3,7 @@ from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
 
 from apps.backlog import services as backlog_services
-from apps.backlog.models import Task
+from apps.backlog.models import Story, Task
 from apps.core.exceptions import Unprocessable
 from apps.core.permissions import ANY_ROLE, SM_UP, from_sprint_id, project_role_required
 
@@ -15,7 +15,7 @@ from .models import Sprint
 def _page(request, new_form=None, status=200):
     project = request.project
     sprints = list(project.sprints.all())
-    tasks = Task.objects.filter(project=project, kind="task").select_related("column", "assignee").order_by("id")
+    tasks = Task.objects.filter(project=project).select_related("column", "assignee").order_by("id")
     by_sprint = {}
     backlog_tasks = []
     for t in tasks:
@@ -23,19 +23,22 @@ def _page(request, new_form=None, status=200):
             by_sprint.setdefault(t.sprint_id, []).append(t)
         else:
             backlog_tasks.append(t)
+    metrics, velocity = backlog_services.sprint_metrics(project)
     for s in sprints:
+        s.metrics = metrics.get(s.pk)
         s.task_list = by_sprint.get(s.pk, [])
         s.edit_form = SprintForm(initial={
             "name": s.name, "goal": s.goal, "start_date": s.start_date, "end_date": s.end_date,
         })
     pending_stories = [
-        st for st in Task.objects.filter(project=project, kind="story").order_by("id")
-        if st.children.filter(sprint__isnull=True).exists()
+        st for st in Story.objects.filter(project=project).order_by("id")
+        if st.tasks.filter(sprint__isnull=True).exists()
     ]
     ctx = {
         "project": project,
         "pending_stories": pending_stories,
         "sprints": sprints,
+        "velocity": velocity,
         "backlog_tasks": backlog_tasks,
         "new_form": new_form or SprintForm(),
         "close_form": CloseSprintForm(),

@@ -15,7 +15,7 @@ python -m venv .venv
 .venv/Scripts/activate            # Windows (en Linux/macOS: source .venv/bin/activate)
 pip install -r requirements-dev.txt
 cp .env.example .env              # y rellena SECRET_KEY y las variables MYSQL_*
-docker compose up -d              # MySQL 8.4 local (sin Docker, instala MySQL a mano)
+docker compose up -d              # MySQL 8.0 local (igual que producción). Sin Docker: ver deploy/local-setup-wsl.sh
 python manage.py migrate
 python manage.py createsuperuser  # solo para /admin/ (operador)
 python manage.py runserver

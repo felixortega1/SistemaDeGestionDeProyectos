@@ -1,0 +1,27 @@
+[Unit]
+Description=Sistema de Gestion de Proyectos (Django + gunicorn)
+After=network.target mysql.service
+Wants=mysql.service
+
+[Service]
+Type=simple
+User=gestion
+Group=gestion
+WorkingDirectory=/opt/gestion
+EnvironmentFile=/etc/gestion/gestion.env
+ExecStart=/opt/gestion/.venv/bin/gunicorn config.wsgi:application \
+    --bind 127.0.0.1:8003 \
+    --workers 2 \
+    --timeout 30 \
+    --access-logfile - \
+    --error-logfile -
+Restart=on-failure
+RestartSec=5
+# Endurecimiento basico
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

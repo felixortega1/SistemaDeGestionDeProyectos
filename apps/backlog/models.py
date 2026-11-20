@@ -3,18 +3,70 @@ from django.db import models
 from django.db.models import F, Q
 
 
-class Task(models.Model):
-    STORY = "story"
-    TASK = "task"
-    KINDS = [(STORY, "Historia"), (TASK, "Tarea")]
+class Epic(models.Model):
+    """Agrupa historias de un proyecto bajo un mismo tema. Las actividades heredan la épica de su historia."""
 
-    project = models.ForeignKey("projects.Project", on_delete=models.PROTECT, related_name="tasks")
-    sprint = models.ForeignKey("sprints.Sprint", on_delete=models.PROTECT, null=True, blank=True, related_name="tasks")
-    parent = models.ForeignKey("self", on_delete=models.PROTECT, null=True, blank=True, related_name="children")
-    kind = models.CharField(max_length=10, choices=KINDS, default=TASK)
+    DEFAULT_COLOR = "#EAB308"
+
+    project = models.ForeignKey("projects.Project", on_delete=models.CASCADE, related_name="epics")
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    color = models.CharField(max_length=7, default=DEFAULT_COLOR)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["title", "id"]
+
+    def __str__(self):
+        return self.title
+
+
+class Story(models.Model):
+    """Historia de usuario: algo que alguien necesita. Se reparte en tareas y tiene criterios de aceptación."""
+
+    HIGH, MEDIUM, LOW = "high", "medium", "low"
+    PRIORITIES = [(HIGH, "Alta"), (MEDIUM, "Media"), (LOW, "Baja")]
+
+    project = models.ForeignKey("projects.Project", on_delete=models.PROTECT, related_name="stories")
+    epic = models.ForeignKey(Epic, on_delete=models.PROTECT, null=True, blank=True, related_name="stories")
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     stakeholder = models.CharField(max_length=200, blank=True, help_text="Quién pidió esta historia.")
+    priority = models.CharField(max_length=10, choices=PRIORITIES, default=MEDIUM)
+    estimate_points = models.PositiveSmallIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=Q(priority__in=["high", "medium", "low"]), name="story_priority_valid"),
+        ]
+
+    def __str__(self):
+        return self.title
+
+
+class AcceptanceCriterion(models.Model):
+    """Punto de la lista de verificación de una historia."""
+
+    story = models.ForeignKey(Story, on_delete=models.CASCADE, related_name="criteria")
+    text = models.CharField(max_length=500)
+    is_done = models.BooleanField(default=False)
+    position = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["position", "id"]
+
+
+class Task(models.Model):
+    """Tarea ejecutable: lo que alguien hace. Puede pertenecer a una historia o estar suelta."""
+
+    project = models.ForeignKey("projects.Project", on_delete=models.PROTECT, related_name="tasks")
+    story = models.ForeignKey(Story, on_delete=models.PROTECT, null=True, blank=True, related_name="tasks")
+    sprint = models.ForeignKey("sprints.Sprint", on_delete=models.PROTECT, null=True, blank=True, related_name="tasks")
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
     column = models.ForeignKey("board.BoardColumn", on_delete=models.PROTECT, null=True, blank=True, related_name="tasks")
     estimate_points = models.PositiveSmallIntegerField(null=True, blank=True)
     assignee = models.ForeignKey(
@@ -31,21 +83,9 @@ class Task(models.Model):
             models.Index(fields=["project", "sprint", "column"], name="task_proj_sprint_col_idx"),
         ]
         constraints = [
-            models.CheckConstraint(condition=Q(kind__in=["story", "task"]), name="task_kind_valid"),
             models.CheckConstraint(
                 condition=(Q(sprint__isnull=True, column__isnull=True) | Q(sprint__isnull=False, column__isnull=False)),
                 name="task_sprint_column_together",
-            ),
-            models.CheckConstraint(
-                condition=Q(kind="task")
-                | Q(
-                    sprint__isnull=True,
-                    column__isnull=True,
-                    start_date__isnull=True,
-                    due_date__isnull=True,
-                    parent__isnull=True,
-                ),
-                name="task_story_has_no_planning",
             ),
         ]
 
@@ -88,12 +128,27 @@ class SprintTask(models.Model):
 
 
 class Comment(models.Model):
-    """Comentario de un miembro del proyecto sobre una historia o una actividad."""
+    """Comentario de un miembro del proyecto sobre una historia o una tarea (exactamente una de las dos)."""
 
-    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="comments")
+    story = models.ForeignKey(Story, on_delete=models.CASCADE, null=True, blank=True, related_name="comments")
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, null=True, blank=True, related_name="comments")
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
     body = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["created_at", "id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(story__isnull=False, task__isnull=True) | Q(story__isnull=True, task__isnull=False),
+                name="comment_story_xor_task",
+            ),
+        ]
+
+    @property
+    def target(self):
+        return self.story if self.story_id else self.task
+
+    @property
+    def project(self):
+        return self.target.project
