@@ -307,3 +307,18 @@ body.tickets-open .tickets-toggle { right: min(340px, 92vw); }
 .tickets-inner { overflow-x: hidden; }
 .tk-filter select, .tk-new input, .tk-new select { min-width: 0; }
 .tk-item { max-width: 100%; }
+
+/* ---------- Épicas, criterios y prioridad ---------- */
+.epic-group { margin: 20px 0 28px; }
+.epic-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.epic-head h2 { margin: 0; }
+.epic-dot { display: inline-block; width: 10px; height: 10px; border-radius: var(--radius-pill); vertical-align: middle; flex: none; }
+.filters { margin: 12px 0; }
+.criteria { list-style: none; padding: 0; margin: 12px 0; }
+.criterion { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.criterion label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.criterion input[type="checkbox"] { width: auto; min-height: 0; }
+.criterion.done span { color: var(--text-muted); text-decoration: line-through; }
+.metrics { display: flex; gap: 16px; flex-wrap: wrap; margin: 8px 0; }
+.metrics > div { min-width: 110px; }
+.metrics strong { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }

@@ -24,11 +24,8 @@ def test_invalid_targets_are_422(project, po, make_task, active_sprint, columns)
     sprint, (t, *_) = active_sprint(1)
     dev = columns["En desarrollo"]
     loose = make_task("suelta")
-    story = make_task("hist", kind="story")
     with pytest.raises(Unprocessable):
-        services.move_task(loose, dev, po)
-    with pytest.raises(Unprocessable):
-        services.move_task(story, dev, po)
+        services.move_task(loose, dev, po)  # sin sprint
     services.close_sprint(sprint)
     with pytest.raises(Unprocessable):
         services.move_task(t, dev, po)

@@ -1,5 +1,7 @@
 <article class="card task-card" data-task-id="{{ task.pk }}" data-allowed="{{ task.allowed_ids }}" data-move-url="{% url 'task_move' task.pk %}">
-  <strong><a class="card-title" href="{% url 'task_detail' task.pk %}">{{ task.title }}</a></strong>
+  <strong>{% if task.story and task.story.epic %}<span class="epic-dot" style="background:{{ task.story.epic.color }}" title="Épica: {{ task.story.epic.title }}" aria-hidden="true"></span> {% endif %}<a class="card-title" href="{% url 'task_detail' task.pk %}">{{ task.title }}</a></strong>
+  {% if task.story.priority == 'high' %}<span class="tag late">Alta</span>{% endif %}
+  {% if task.story %}<div class="small"><a class="muted" href="{% url 'story_detail' task.story.pk %}">{{ task.story.title }}</a>{% if task.story_criteria %} <span class="tag" title="Criterios de aceptación de la historia">✓ {{ task.story_criteria.0 }}/{{ task.story_criteria.1 }}</span>{% endif %}</div>{% endif %}
   <div class="muted small">{{ task.assignee.display_name|default:"Sin responsable" }}{% if task.estimate_points is not None %} · {{ task.estimate_points }} pts{% endif %}</div>
   {% if task.allowed %}
   <form method="post" action="{% url 'task_move' task.pk %}" class="move-form">{% csrf_token %}

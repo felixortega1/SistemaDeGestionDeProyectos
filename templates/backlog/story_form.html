@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Editar historia{% endblock %}
+{% block content %}
+<nav class="crumbs" aria-label="Ruta">
+  <a href="{% url 'stories' project.pk %}">Historias</a> <span>›</span>
+  <a href="{% url 'story_detail' story.pk %}">{{ story.title }}</a> <span>›</span>
+  <span>Editar</span>
+</nav>
+<h1>Editar historia</h1>
+<form method="post" class="card narrow">{% csrf_token %}{{ form.as_p }}<button type="submit">Guardar</button> <a href="{% url 'story_detail' story.pk %}">Volver</a></form>
+{% endblock %}

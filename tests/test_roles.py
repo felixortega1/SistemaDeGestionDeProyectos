@@ -7,7 +7,7 @@ P = "/projects/{}"
 
 def test_matrix_projects_tasks_sprints(project, po, sm, dev, make_task, client_for):
     t = make_task("x")
-    new_task = {"title": "nueva", "kind": "task"}
+    new_task = {"title": "nueva"}
     url = f"/projects/{project.pk}/tasks/new/"
     assert client_for(po).post(url, new_task).status_code == 302
     assert client_for(sm).post(url, new_task).status_code == 403

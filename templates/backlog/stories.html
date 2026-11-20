@@ -25,24 +25,84 @@
   <summary>Nueva historia</summary>
   <form method="post" action="{% url 'story_new' project.pk %}" class="card narrow">{% csrf_token %}{{ story_form.as_p }}<button type="submit">Crear historia</button></form>
 </details>
+<details {% if epic_form.errors %}open{% endif %}>
+  <summary>Nueva épica</summary>
+  <form method="post" action="{% url 'epic_new' project.pk %}" class="card narrow">{% csrf_token %}{{ epic_form.as_p }}<button type="submit">Crear épica</button></form>
+</details>
 {% endif %}
 
-{% if stories %}
-<ul class="cards">
-  {% for s in stories %}
-  <li class="card story-card">
-    <a class="project-title" href="{% url 'task_detail' s.pk %}">{{ s.title }}</a>
-    {% if s.stakeholder %}<span class="muted small">{{ s.stakeholder }}</span>{% endif %}
-    <div class="meter" aria-hidden="true"><i style="width:{{ s.percent }}%"></i></div>
-    <div class="proj-meta">
-      <span class="muted small tabular">{{ s.done }} de {{ s.total }} actividad{{ s.total|pluralize:"es" }} lista{{ s.done|pluralize }}</span>
-      {% if s.total and s.unassigned %}<span class="tag status-planned">{{ s.unassigned }} sin sprint</span>{% endif %}
-    </div>
-  </li>
-  {% endfor %}
-</ul>
-{% else %}
+{% if epics %}
+<form method="get" class="inline filters">
+  <label for="epic-filter" class="small muted">Épica</label>
+  <select id="epic-filter" name="epic">
+    <option value="">Todas</option>
+    {% for e in epics %}<option value="{{ e.pk }}"{% if filter_epic == e.pk|stringformat:"s" %} selected{% endif %}>{{ e.title }}</option>{% endfor %}
+    <option value="none"{% if filter_epic == "none" %} selected{% endif %}>Sin épica</option>
+  </select>
+  <button type="submit" class="secondary">Filtrar</button>
+  {% if filter_epic %}<a class="small" href="{% url 'stories' project.pk %}">Quitar filtro</a>{% endif %}
+</form>
+{% endif %}
+
+{% for g in groups %}
+{% if g.epic or g.stories %}
+<section class="epic-group">
+  <div class="epic-head">
+    {% if g.epic %}
+    <span class="epic-dot" style="background:{{ g.epic.color }}" aria-hidden="true"></span>
+    <h2>{{ g.epic.title }}</h2>
+    <span class="muted small tabular">{{ g.stories|length }} historia{{ g.stories|length|pluralize }} · {{ g.done }} de {{ g.total }} tarea{{ g.total|pluralize }} lista{{ g.done|pluralize }}</span>
+    {% else %}
+    <h2>Sin épica</h2>
+    {% endif %}
+  </div>
+  {% if g.epic %}
+  <div class="meter" aria-hidden="true"><i style="width:{{ g.percent }}%"></i></div>
+  {% if g.epic.description %}<p class="muted small">{{ g.epic.description }}</p>{% endif %}
+  {% if can_create %}
+  <details>
+    <summary>Editar épica</summary>
+    <form method="post" action="{% url 'epic_edit' g.epic.pk %}" class="card narrow">{% csrf_token %}
+      <p><label>Título de la épica<input type="text" name="title" value="{{ g.epic.title }}" maxlength="200" required></label></p>
+      <p><label>Descripción<textarea name="description" rows="2">{{ g.epic.description }}</textarea></label></p>
+      <p><label>Color<input type="color" name="color" value="{{ g.epic.color }}"></label></p>
+      <button type="submit">Guardar épica</button>
+    </form>
+    {% if is_po %}
+    <form method="post" action="{% url 'epic_delete' g.epic.pk %}" class="inline">{% csrf_token %}<button type="submit" class="danger">Borrar épica</button></form>
+    <span class="muted small">Solo se puede borrar si no tiene historias.</span>
+    {% endif %}
+  </details>
+  {% endif %}
+  {% endif %}
+
+  {% if g.stories %}
+  <ul class="cards">
+    {% for s in g.stories %}
+    <li class="card story-card">
+      <a class="project-title" href="{% url 'story_detail' s.pk %}">{{ s.title }}</a>
+      <span>
+        {% if s.priority == 'high' %}<span class="tag late">Prioridad alta</span>{% elif s.priority == 'low' %}<span class="tag status-closed">Prioridad baja</span>{% endif %}
+        {% if s.crit_total %}<span class="tag" title="Criterios de aceptación cumplidos">✓ {{ s.crit_done }}/{{ s.crit_total }}</span>{% endif %}
+        {% if s.estimate_points is not None %}<span class="tag status-closed">{{ s.estimate_points }} pts</span>{% endif %}
+      </span>
+      {% if s.stakeholder %}<span class="muted small">{{ s.stakeholder }}</span>{% endif %}
+      <div class="meter" aria-hidden="true"><i style="width:{{ s.percent }}%"></i></div>
+      <div class="proj-meta">
+        <span class="muted small tabular">{{ s.done }} de {{ s.total }} tarea{{ s.total|pluralize }} lista{{ s.done|pluralize }}</span>
+        {% if s.total and s.unassigned %}<span class="tag status-planned">{{ s.unassigned }} sin sprint</span>{% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted small">Esta épica aún no tiene historias.</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endfor %}
+{% if not stories and not epics %}
 <div class="card narrow"><p class="muted" style="margin:0">Todavía no hay historias.{% if can_create %} Crea la primera con «Nueva historia».{% endif %}</p></div>
 {% endif %}
-{% if loose_count %}<p class="muted small">Además hay {{ loose_count }} actividad{{ loose_count|pluralize:"es" }} sin historia en el <a href="{% url 'backlog' project.pk %}">Backlog</a>.</p>{% endif %}
+{% if loose_count %}<p class="muted small">Además hay {{ loose_count }} tarea{{ loose_count|pluralize }} sin historia en el <a href="{% url 'backlog' project.pk %}">Backlog</a>.</p>{% endif %}
 {% endblock %}

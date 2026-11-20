@@ -28,7 +28,7 @@ def effective_dates(task, sprint):
 
 def build_gantt(project, today):
     """Arma la estructura del Gantt. Solo lee."""
-    tasks = list(Task.objects.filter(project=project, kind=Task.TASK).select_related("sprint", "column").order_by("id"))
+    tasks = list(Task.objects.filter(project=project).select_related("sprint", "column").order_by("id"))
     drawn, undated = {}, []
     for t in tasks:
         eff = effective_dates(t, t.sprint)

@@ -51,12 +51,32 @@ def from_column_id(kwargs):
     return column.project, column
 
 
+def from_story_id(kwargs):
+    story = _get("backlog", "Story", pk=kwargs["story_id"])
+    return story.project, story
+
+
 def from_comment_id(kwargs):
     Comment = apps.get_model("backlog", "Comment")
-    comment = Comment.objects.select_related("task__project", "author").filter(pk=kwargs["comment_id"]).first()
+    comment = (
+        Comment.objects.select_related("story__project", "task__project", "author").filter(pk=kwargs["comment_id"]).first()
+    )
     if comment is None:
         raise Http404
-    return comment.task.project, comment
+    return comment.project, comment
+
+
+def from_epic_id(kwargs):
+    epic = _get("backlog", "Epic", pk=kwargs["epic_id"])
+    return epic.project, epic
+
+
+def from_criterion_id(kwargs):
+    Criterion = apps.get_model("backlog", "AcceptanceCriterion")
+    criterion = Criterion.objects.select_related("story__project").filter(pk=kwargs["criterion_id"]).first()
+    if criterion is None:
+        raise Http404
+    return criterion.story.project, criterion
 
 
 def from_department_id(kwargs):

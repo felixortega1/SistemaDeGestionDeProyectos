@@ -47,15 +47,15 @@ class Command(BaseCommand):
         backlog.create_milestone(p, "Lanzamiento del sitio", d(20))
         backlog.create_milestone(p, "Revisión con dirección", d(5))
 
-        story_home = backlog.create_task(p, title="Como visitante quiero una página de inicio clara", kind="story")
-        story_blog = backlog.create_task(p, title="Como lector quiero encontrar los artículos", kind="story")
+        story_home = backlog.create_story(p, title="Como visitante quiero una página de inicio clara")
+        story_blog = backlog.create_story(p, title="Como lector quiero encontrar los artículos")
 
         def task(title, assignee=None, points=3, **kw):
             return backlog.create_task(p, title=title, assignee=assignee, estimate_points=points, **kw)
 
         # Sprint 1 (cerrado, con historial)
-        t1 = task("Definir guía de estilo", marta, 2, parent=story_home)
-        t2 = task("Maquetar página de inicio", marta, 5, parent=story_home)
+        t1 = task("Definir guía de estilo", marta, 2, story=story_home)
+        t2 = task("Maquetar página de inicio", marta, 5, story=story_home)
         t3 = task("Elegir tipografías", pedro, 1)
         t4 = task("Auditar contenido actual", pedro, 3)
         s1 = sprints.create_sprint(p, "Sprint 1", "Base visual del sitio", d(-21), d(-8))
@@ -72,9 +72,9 @@ class Command(BaseCommand):
         )
 
         # Sprint 2 (activo)
-        a = task("Formulario de contacto", marta, 3, parent=story_home)
-        b = task("Migrar artículos del blog", pedro, 8, parent=story_blog)
-        c = task("Buscador de artículos", pedro, 5, parent=story_blog)
+        a = task("Formulario de contacto", marta, 3, story=story_home)
+        b = task("Migrar artículos del blog", pedro, 8, story=story_blog)
+        c = task("Buscador de artículos", pedro, 5, story=story_blog)
         e = task("Optimizar imágenes", marta, 2)
         f = task("Redactar textos de la página Nosotros", None, 3)
         g = task("Revisión de accesibilidad", luis, 3, start_date=d(-4), due_date=d(-1))  # fechas propias y atrasada
@@ -120,7 +120,7 @@ class Command(BaseCommand):
 
     def enrich(self):
         """Empresas, fechas, objetivos, solicitantes y comentarios. Se puede ejecutar varias veces."""
-        from apps.backlog.models import Comment, Task
+        from apps.backlog.models import Comment, Story, Task
         from apps.projects.models import Company, Project
 
         User = get_user_model()
@@ -152,7 +152,7 @@ class Command(BaseCommand):
             "Como lector quiero encontrar los artículos": "Equipo de contenido",
         }
         for title, who in stakeholders.items():
-            Task.objects.filter(title=title, kind="story", stakeholder="").update(stakeholder=who)
+            Story.objects.filter(title=title, stakeholder="").update(stakeholder=who)
 
         # Tercer proyecto, en otra empresa
         if not Project.objects.filter(name="Plataforma de matrículas").exists():
@@ -167,13 +167,13 @@ class Command(BaseCommand):
             )
             projects.add_member(q, luis.email, ProjectMember.SCRUM_MASTER)
             projects.add_member(q, marta.email, ProjectMember.DEVELOPER)
-            story = backlog.create_task(
-                q, title="Los padres deben poder pagar la matrícula en línea", kind="story", stakeholder="Dirección del colegio"
+            story = backlog.create_story(
+                q, title="Los padres deben poder pagar la matrícula en línea", stakeholder="Dirección del colegio"
             )
-            backlog.create_task(q, title="Elegir la pasarela de pagos", parent=story, estimate_points=3, assignee=marta)
-            backlog.create_task(q, title="Pantalla de resumen de pago", parent=story, estimate_points=2)
-            backlog.create_task(
-                q, title="Los padres deben ver el estado de la matrícula de cada hijo", kind="story", stakeholder="Secretaría"
+            backlog.create_task(q, title="Elegir la pasarela de pagos", story=story, estimate_points=3, assignee=marta)
+            backlog.create_task(q, title="Pantalla de resumen de pago", story=story, estimate_points=2)
+            backlog.create_story(
+                q, title="Los padres deben ver el estado de la matrícula de cada hijo", stakeholder="Secretaría"
             )
 
         from apps.tickets import services as tickets
@@ -189,9 +189,11 @@ class Command(BaseCommand):
             done = tickets.create_ticket(luis, company=company, title="Enviar el resumen semanal", assignee=marta)
             tickets.toggle_ticket(done, marta)
 
+        self.scrum_data()
+
         if not Comment.objects.exists():
-            story = Task.objects.filter(kind="story", title__startswith="Como visitante").first()
-            act = Task.objects.filter(kind="task", title="Formulario de contacto").first()
+            story = Story.objects.filter(title__startswith="Como visitante").first()
+            act = Task.objects.filter(title="Formulario de contacto").first()
             if story:
                 backlog.add_comment(story, ana, "Dirección pidió que la página de inicio muestre los 3 servicios principales.")
                 backlog.add_comment(story, marta, "Entendido. ¿Tenemos los textos finales o uso texto de ejemplo?")
@@ -199,3 +201,55 @@ class Command(BaseCommand):
             if act:
                 backlog.add_comment(act, pedro, "Necesito saber a qué correo deben llegar los mensajes del formulario.")
                 backlog.add_comment(act, luis, "Al correo de contacto de la empresa. Lo confirmo con Ana.")
+
+    def scrum_data(self):
+        """Épicas, criterios de aceptación y prioridades. Idempotente: no repite lo que ya existe."""
+        from apps.backlog.models import Epic, Story
+        from apps.projects.models import Project
+
+        User = get_user_model()
+        ana = User.objects.get(email="ana@demo.com")
+
+        web = Project.objects.filter(name="Rediseño del sitio web").first()
+        if web is not None and not Epic.objects.filter(project=web).exists():
+            diseno = backlog.create_epic(
+                web, title="Identidad y diseño", description="Cómo se ve y se siente el sitio.", color="#4F6BED"
+            )
+            contenido = backlog.create_epic(
+                web, title="Contenido y blog", description="Textos, artículos y búsqueda.", color="#2FA37A"
+            )
+            home = Story.objects.filter(project=web, title__startswith="Como visitante").first()
+            blog = Story.objects.filter(project=web, title__startswith="Como lector").first()
+            if home:
+                backlog.update_story(home, epic=diseno, priority=Story.HIGH, estimate_points=8)
+                for text in (
+                    "La página muestra los 3 servicios principales",
+                    "Carga en menos de 2 segundos",
+                    "Se ve bien en celular y en computadora",
+                ):
+                    backlog.add_criterion(home, text)
+                backlog.toggle_criterion(home.criteria.first(), ana)
+            if blog:
+                backlog.update_story(blog, epic=contenido, priority=Story.MEDIUM, estimate_points=13)
+                for text in ("Se puede buscar por título", "Los artículos antiguos conservan su enlace"):
+                    backlog.add_criterion(blog, text)
+            backlog.create_story(
+                web,
+                title="Como editor quiero publicar sin ayuda técnica",
+                stakeholder="Equipo de contenido",
+                epic=contenido,
+                priority=Story.LOW,
+                estimate_points=5,
+            )
+
+        school = Project.objects.filter(name="Plataforma de matrículas").first()
+        if school is not None and not Epic.objects.filter(project=school).exists():
+            matricula = backlog.create_epic(school, title="Matrícula en línea", color="#E5584F")
+            pay = Story.objects.filter(project=school, title__startswith="Los padres deben poder pagar").first()
+            status = Story.objects.filter(project=school, title__startswith="Los padres deben ver").first()
+            if pay:
+                backlog.update_story(pay, epic=matricula, priority=Story.HIGH, estimate_points=5)
+                backlog.add_criterion(pay, "El padre recibe un comprobante por correo")
+                backlog.add_criterion(pay, "El pago queda registrado en secretaría")
+            if status:
+                backlog.update_story(status, epic=matricula, priority=Story.LOW)

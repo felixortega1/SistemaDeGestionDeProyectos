@@ -5,18 +5,35 @@
 
 {% if is_po %}
 <details {% if task_form.errors %}open{% endif %}>
-  <summary>Nueva historia o tarea</summary>
+  <summary>Nueva tarea</summary>
   <form method="post" action="{% url 'task_new' project.pk %}" class="card">{% csrf_token %}{{ task_form.as_p }}<button type="submit">Crear</button></form>
 </details>
 {% endif %}
 
+<form method="get" class="inline filters">
+  <label for="f-priority" class="small muted">Prioridad</label>
+  <select id="f-priority" name="priority">
+    <option value="">Todas</option>
+    {% for value, label in priorities %}<option value="{{ value }}"{% if filter_priority == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+  </select>
+  <label for="f-epic" class="small muted">Épica</label>
+  <select id="f-epic" name="epic">
+    <option value="">Todas</option>
+    {% for e in epics %}<option value="{{ e.pk }}"{% if filter_epic == e.pk|stringformat:"s" %} selected{% endif %}>{{ e.title }}</option>{% endfor %}
+    <option value="none"{% if filter_epic == "none" %} selected{% endif %}>Sin épica</option>
+  </select>
+  <button type="submit" class="secondary">Filtrar</button>
+  {% if filter_priority or filter_epic %}<a class="small" href="{% url 'backlog' project.pk %}">Quitar filtros</a>{% endif %}
+</form>
+
 <h2>Tareas sin sprint (product backlog)</h2>
 {% if backlog_tasks %}
 <table>
-  <tr><th>Tarea</th><th>Responsable</th><th>Puntos</th><th>Fechas propias</th><th></th></tr>
+  <tr><th>Tarea</th><th>Prioridad</th><th>Responsable</th><th>Puntos</th><th>Fechas propias</th><th></th></tr>
   {% for t in backlog_tasks %}
   <tr>
-    <td><a href="{% url 'task_detail' t.pk %}">{{ t.title }}</a>{% if t.parent %} <span class="muted">↳ {{ t.parent.title }}</span>{% endif %}</td>
+    <td><a href="{% url 'task_detail' t.pk %}">{{ t.title }}</a>{% if t.story %} <span class="muted">↳ <a href="{% url 'story_detail' t.story.pk %}">{{ t.story.title }}</a></span>{% endif %}</td>
+    <td>{% if t.story %}{{ t.story.get_priority_display }}{% else %}—{% endif %}</td>
     <td>{{ t.assignee.display_name|default:"—" }}</td>
     <td>{{ t.estimate_points|default_if_none:"—" }}</td>
     <td>{% if t.start_date or t.due_date %}{{ t.start_date|default_if_none:"?" }} → {{ t.due_date|default_if_none:"?" }}{% else %}—{% endif %}</td>
@@ -48,9 +65,10 @@
 <h2>Historias</h2>
 {% for s in stories %}
 <div class="card">
-  <strong><a href="{% url 'task_detail' s.pk %}">{{ s.title }}</a></strong>
+  <strong><a href="{% url 'story_detail' s.pk %}">{{ s.title }}</a></strong>
+  {% if s.priority == 'high' %}<span class="tag late">Alta</span>{% elif s.priority == 'low' %}<span class="tag status-closed">Baja</span>{% endif %}
   {% if s.child_list %}<ul>{% for c in s.child_list %}<li><a href="{% url 'task_detail' c.pk %}">{{ c.title }}</a> <span class="muted">{% if c.sprint %}{{ c.sprint.name }}{% else %}backlog{% endif %}</span></li>{% endfor %}</ul>{% endif %}
-  {% if is_po %}<form method="post" action="{% url 'task_delete' s.pk %}" class="inline">{% csrf_token %}<button type="submit" class="danger">Borrar</button></form>{% endif %}
+  {% if is_po %}<form method="post" action="{% url 'story_delete' s.pk %}" class="inline">{% csrf_token %}<button type="submit" class="danger">Borrar</button></form>{% endif %}
 </div>
 {% empty %}<p class="muted">No hay historias.</p>{% endfor %}
 

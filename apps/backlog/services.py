@@ -1,6 +1,8 @@
+import re
+
 from django.apps import apps
 from django.db import transaction
-from django.db.models import Prefetch
+from django.db.models import Case, Count, IntegerField, Prefetch, Q, Value, When
 
 from apps.board.models import BoardColumn, ColumnTransition
 from apps.core.exceptions import Conflict, Forbidden, Unprocessable
@@ -8,16 +10,24 @@ from apps.core.locks import lock_project
 from apps.core.permissions import PO, can_move_task, role_of
 from apps.sprints.models import Sprint
 
-from .models import Comment, Milestone, SprintTask, Task, TaskDependency
+from .models import AcceptanceCriterion, Comment, Epic, Milestone, SprintTask, Story, Task, TaskDependency
 
-EDITABLE_FIELDS = (
-    "title", "description", "stakeholder", "parent", "estimate_points", "assignee", "start_date", "due_date",
-)
+STORY_FIELDS = ("title", "description", "stakeholder", "epic", "priority", "estimate_points")
+TASK_FIELDS = ("title", "description", "story", "estimate_points", "assignee", "start_date", "due_date")
+EDITABLE_FIELDS = TASK_FIELDS  # nombre histórico: los campos editables de una tarea
+HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
+PRIORITIES = {value for value, _ in Story.PRIORITIES}
 
 
-# ---------------------------------------------------------------- hitos y tareas
-def create_milestone(project, name, date):
-    return Milestone.objects.create(project=project, name=name, date=date)
+def order_by_priority(queryset):
+    """Ordena historias por prioridad (alta, media, baja) y luego por id."""
+    rank = Case(
+        When(priority=Story.HIGH, then=Value(0)),
+        When(priority=Story.MEDIUM, then=Value(1)),
+        default=Value(2),
+        output_field=IntegerField(),
+    )
+    return queryset.annotate(priority_rank=rank).order_by("priority_rank", "id")
 
 
 def _is_member(project, user):
@@ -25,35 +35,68 @@ def _is_member(project, user):
     return ProjectMember.objects.filter(project=project, user=user).exists()
 
 
-def _validate_task_data(project, kind, data, task=None):
-    parent, assignee = data.get("parent"), data.get("assignee")
-    if parent is not None:
-        if parent.project_id != project.pk:
-            raise Unprocessable("La historia padre es de otro proyecto.")
-        if parent.kind != Task.STORY:
-            raise Unprocessable("El padre de una tarea debe ser una historia.")
-        if kind == Task.STORY:
-            raise Unprocessable("Una historia no puede tener padre.")
+# ---------------------------------------------------------------- hitos
+def create_milestone(project, name, date):
+    return Milestone.objects.create(project=project, name=name, date=date)
+
+
+# ---------------------------------------------------------------- historias
+def _validate_story_data(project, data):
+    epic = data.get("epic")
+    if epic is not None and epic.project_id != project.pk:
+        raise Unprocessable("La épica es de otro proyecto.")
+    if "priority" in data and data["priority"] not in PRIORITIES:
+        raise Unprocessable("Prioridad no válida.")
+    if not (data.get("title", "x") or "").strip():
+        raise Unprocessable("La historia necesita un título.")
+
+
+def create_story(project, *, title, **data):
+    data = {k: v for k, v in data.items() if k in STORY_FIELDS}
+    _validate_story_data(project, {"title": title, **data})
+    return Story.objects.create(project=project, title=title.strip(), **data)
+
+
+def update_story(story, **data):
+    """Guarda solo los campos recibidos."""
+    data = {k: v for k, v in data.items() if k in STORY_FIELDS}
+    _validate_story_data(story.project, data)
+    for key, value in data.items():
+        setattr(story, key, value)
+    story.save(update_fields=[*data.keys(), "updated_at"])
+    return story
+
+
+def delete_story(story):
+    with transaction.atomic():
+        lock_project(story.project_id)
+        story = Story.objects.get(pk=story.pk)
+        if story.tasks.exists():
+            raise Conflict("La historia tiene tareas y no se puede borrar.")
+        story.delete()  # los criterios y comentarios se borran en cascada
+
+
+# ---------------------------------------------------------------- tareas
+def _validate_task_data(project, data, task=None):
+    story, assignee = data.get("story"), data.get("assignee")
+    if story is not None and story.project_id != project.pk:
+        raise Unprocessable("La historia es de otro proyecto.")
     if assignee is not None:
         keeps_old = task is not None and task.assignee_id == assignee.pk
         if not keeps_old and not _is_member(project, assignee):
             raise Unprocessable("El responsable debe ser miembro del proyecto.")
-    if kind == Task.STORY and (data.get("start_date") or data.get("due_date")):
-        raise Unprocessable("Una historia no tiene fechas.")
 
 
-def create_task(project, *, title, kind=Task.TASK, **data):
-    if kind not in (Task.STORY, Task.TASK):
-        raise Unprocessable("Tipo de tarea no válido.")
-    _validate_task_data(project, kind, data)
-    fields = {k: v for k, v in data.items() if k in EDITABLE_FIELDS}
-    return Task.objects.create(project=project, title=title, kind=kind, **fields)
+def create_task(project, *, title, **data):
+    data = {k: v for k, v in data.items() if k in TASK_FIELDS}
+    _validate_task_data(project, data)
+    return Task.objects.create(project=project, title=title, **data)
 
 
 def update_task(task, **data):
-    """Guarda solo los campos recibidos (nunca `column`, `sprint` ni `status`)."""
-    data = {k: v for k, v in data.items() if k in EDITABLE_FIELDS}
-    _validate_task_data(task.project, task.kind, data, task=task)
+    """Guarda solo los campos recibidos (nunca `column` ni `sprint`)."""
+    data = {k: v for k, v in data.items() if k in TASK_FIELDS}
+    _validate_task_data(task.project, data, task=task)
     for key, value in data.items():
         setattr(task, key, value)
     task.save(update_fields=[*data.keys(), "updated_at"])
@@ -65,29 +108,100 @@ def delete_task(task):
         lock_project(task.project_id)
         task = Task.objects.get(pk=task.pk)
         if (
-            task.children.exists()
-            or task.dependencies.exists()
+            task.dependencies.exists()
             or task.dependents.exists()
             or task.sprint_id is not None
             or task.sprint_history.exists()
         ):
-            raise Conflict("La tarea tiene hijas, dependencias, sprint o historial y no se puede borrar.")
+            raise Conflict("La tarea tiene dependencias, sprint o historial y no se puede borrar.")
         task.delete()
 
 
+# ---------------------------------------------------------------- épicas
+def _check_epic(title, color):
+    if not (title or "").strip():
+        raise Unprocessable("La épica necesita un título.")
+    if not HEX_COLOR_RE.match(color or ""):
+        raise Unprocessable("El color debe tener el formato #RRGGBB.")
+
+
+def create_epic(project, *, title, description="", color=Epic.DEFAULT_COLOR):
+    title = (title or "").strip()
+    _check_epic(title, color)
+    return Epic.objects.create(project=project, title=title, description=description or "", color=color.upper())
+
+
+def update_epic(epic, *, title, description="", color=Epic.DEFAULT_COLOR):
+    title = (title or "").strip()
+    _check_epic(title, color)
+    epic.title, epic.description, epic.color = title, description or "", color.upper()
+    epic.save(update_fields=["title", "description", "color"])
+    return epic
+
+
+def delete_epic(epic):
+    with transaction.atomic():
+        epic = Epic.objects.select_for_update().get(pk=epic.pk)
+        if Story.objects.filter(epic=epic).exists():
+            raise Conflict("La épica tiene historias asociadas y no se puede borrar.")
+        epic.delete()
+
+
+# ---------------------------------------------------------------- criterios de aceptación
+def add_criterion(story, text):
+    text = (text or "").strip()
+    if not text:
+        raise Unprocessable("El criterio no puede estar vacío.")
+    if len(text) > 500:
+        raise Unprocessable("El criterio debe tener 500 caracteres o menos.")
+    last = story.criteria.order_by("-position").values_list("position", flat=True).first()
+    return AcceptanceCriterion.objects.create(story=story, text=text, position=(last + 1) if last is not None else 0)
+
+
+def toggle_criterion(criterion, user):
+    if not _is_member(criterion.story.project, user):
+        raise Forbidden("Solo los miembros del proyecto pueden marcar criterios.")
+    criterion.is_done = not criterion.is_done
+    criterion.save(update_fields=["is_done"])
+    return criterion
+
+
+def delete_criterion(criterion):
+    criterion.delete()
+
+
+def criteria_counts(project):
+    """{id de historia: (cumplidos, total)} de los criterios de todas las historias del proyecto."""
+    rows = (
+        AcceptanceCriterion.objects.filter(story__project=project)
+        .order_by()
+        .values("story_id")
+        .annotate(total=Count("id"), done=Count("id", filter=Q(is_done=True)))
+    )
+    return {row["story_id"]: (row["done"], row["total"]) for row in rows}
+
+
+def criteria_progress(story):
+    """Devuelve (cumplidos, total) de los criterios de una historia."""
+    total = story.criteria.count()
+    return story.criteria.filter(is_done=True).count(), total
+
+
 # ---------------------------------------------------------------- comentarios
-def add_comment(task, author, body):
+def add_comment(target, author, body):
+    """Comenta una historia o una tarea (`target`). Solo los miembros del proyecto."""
     body = (body or "").strip()
     if not body:
         raise Unprocessable("El comentario no puede estar vacío.")
-    if not _is_member(task.project, author):
+    if not _is_member(target.project, author):
         raise Forbidden("Solo los miembros del proyecto pueden comentar.")
-    return Comment.objects.create(task=task, author=author, body=body)
+    field = "story" if isinstance(target, Story) else "task"
+    return Comment.objects.create(**{field: target}, author=author, body=body)
 
 
 def delete_comment(comment, user):
     """Borra un comentario: solo su autor o el Product Owner."""
-    if comment.author_id != user.pk and role_of(user, comment.task.project_id) != PO:
+    if comment.author_id != user.pk and role_of(user, comment.project.pk) != PO:
         raise Forbidden("Solo el autor o el Product Owner pueden borrar el comentario.")
     comment.delete()
 
@@ -112,8 +226,6 @@ def add_dependency(task, depends_on):
         raise Unprocessable("Una tarea no puede depender de sí misma.")
     if task.project_id != depends_on.project_id:
         raise Unprocessable("Las dos tareas deben ser del mismo proyecto.")
-    if task.kind != Task.TASK or depends_on.kind != Task.TASK:
-        raise Unprocessable("Las dependencias solo existen entre tareas, no entre historias.")
     if TaskDependency.objects.filter(task=task, depends_on=depends_on).exists():
         raise Unprocessable("Esa dependencia ya existe.")
     if _reaches(depends_on.pk, task.pk):
@@ -147,8 +259,6 @@ def assign_sprint(task, sprint):
         lock_project(task.project_id)
         task = Task.objects.get(pk=task.pk)
         sprint = Sprint.objects.get(pk=sprint.pk)
-        if task.kind != Task.TASK:
-            raise Unprocessable("Solo las tareas se asignan a un sprint, no las historias.")
         if task.sprint_id is not None:
             raise Unprocessable("La tarea ya tiene sprint.")
         if sprint.project_id != task.project_id:
@@ -162,17 +272,27 @@ def assign_sprint(task, sprint):
 
 
 def assign_story_to_sprint(story, sprint):
-    """Asigna a un sprint todas las actividades de la historia que aún no tienen sprint."""
+    """Asigna a un sprint todas las tareas de la historia que aún no tienen sprint."""
     with transaction.atomic():
-        story = Task.objects.get(pk=story.pk)
-        if story.kind != Task.STORY:
-            raise Unprocessable("Solo una historia se asigna completa a un sprint.")
-        pending = list(Task.objects.filter(parent=story, sprint__isnull=True).order_by("id"))
+        story = Story.objects.get(pk=story.pk)
+        pending = list(Task.objects.filter(story=story, sprint__isnull=True).order_by("id"))
         if not pending:
-            raise Unprocessable("La historia no tiene actividades pendientes de asignar a un sprint.")
+            raise Unprocessable("La historia no tiene tareas pendientes de asignar a un sprint.")
         for task in pending:
             assign_sprint(task, sprint)  # si una falla (WIP, sprint cerrado), se revierten todas
         return pending
+
+
+def unassign_sprint(task):
+    """Devuelve una tarea de un sprint planificado al backlog."""
+    with transaction.atomic():
+        lock_project(task.project_id)
+        task = Task.objects.select_related("sprint").get(pk=task.pk)
+        if task.sprint_id is None:
+            raise Unprocessable("La tarea no tiene sprint.")
+        if task.sprint.status != Sprint.PLANNED:
+            raise Conflict("Solo se puede devolver al backlog una tarea de un sprint planificado.")
+        return apply_placement(task, None, None)
 
 
 def move_task(task, column, user):
@@ -185,12 +305,7 @@ def move_task(task, column, user):
             column = BoardColumn.objects.get(pk=column.pk)
         except BoardColumn.DoesNotExist:
             raise Unprocessable("La columna no existe.") from None
-        if (
-            task.kind != Task.TASK
-            or task.sprint_id is None
-            or task.sprint.status != Sprint.ACTIVE
-            or column.project_id != task.project_id
-        ):
+        if task.sprint_id is None or task.sprint.status != Sprint.ACTIVE or column.project_id != task.project_id:
             raise Unprocessable("Solo se mueven tareas del sprint activo, dentro de su proyecto.")
         if task.column_id == column.pk:
             return task
@@ -230,6 +345,52 @@ def close_sprint(sprint, review_notes="", retro_notes=""):
         return sprint
 
 
+# ---------------------------------------------------------------- métricas de sprint
+def _percent(done, total):
+    return round(100 * done / total) if total else 0
+
+
+def sprint_metrics(project):
+    """Métricas Scrum por sprint del proyecto y velocidad promedio. Solo lee.
+
+    Devuelve ({sprint_id: dict}, velocidad). Para sprints planificados o activos: puntos y tareas
+    totales/hechas y porcentaje. Para cerrados: puntos comprometidos y completados según `SprintTask`.
+    La velocidad es el promedio de puntos completados de los sprints cerrados (None si no hay ninguno)."""
+    result = {}
+    open_tasks = Task.objects.filter(
+        project=project, sprint__status__in=[Sprint.PLANNED, Sprint.ACTIVE]
+    ).select_related("column")
+    for t in open_tasks:
+        m = result.setdefault(t.sprint_id, {"total_points": 0, "done_points": 0, "total_tasks": 0, "done_tasks": 0})
+        points = t.estimate_points or 0
+        m["total_points"] += points
+        m["total_tasks"] += 1
+        if t.column is not None and t.column.is_done:
+            m["done_points"] += points
+            m["done_tasks"] += 1
+    for m in result.values():
+        if m["total_points"]:
+            m["percent"] = _percent(m["done_points"], m["total_points"])
+        else:  # sin estimaciones: el avance se mide por cantidad de tareas
+            m["percent"] = _percent(m["done_tasks"], m["total_tasks"])
+
+    completed = []
+    for sprint in Sprint.objects.filter(project=project, status=Sprint.CLOSED):
+        rows = list(SprintTask.objects.filter(sprint=sprint))
+        committed = sum(r.estimate_points or 0 for r in rows)
+        done = sum(r.estimate_points or 0 for r in rows if r.is_done)
+        result[sprint.pk] = {
+            "committed_points": committed,
+            "completed_points": done,
+            "total_tasks": len(rows),
+            "done_tasks": sum(1 for r in rows if r.is_done),
+            "percent": _percent(done, committed),
+        }
+        completed.append(done)
+    velocity = round(sum(completed) / len(completed), 1) if completed else None
+    return result, velocity
+
+
 # ---------------------------------------------------------------- tablero
 def get_board(project):
     sprint = Sprint.objects.filter(project=project, status=Sprint.ACTIVE).first()
@@ -241,13 +402,22 @@ def get_board(project):
     rows = {c.pk: [] for c in columns}
     if sprint is not None:
         comments = Comment.objects.select_related("author")
-        tasks = (
+        tasks = list(
             Task.objects.filter(sprint=sprint)
-            .select_related("assignee")
+            .select_related("assignee", "story", "story__epic")
             .prefetch_related(Prefetch("comments", queryset=comments))
             .order_by("id")
         )
+        story_ids = {t.story_id for t in tasks if t.story_id}
+        progress = {
+            row["story_id"]: (row["done"], row["total"])
+            for row in AcceptanceCriterion.objects.filter(story_id__in=story_ids)
+            .order_by()
+            .values("story_id")
+            .annotate(total=Count("id"), done=Count("id", filter=Q(is_done=True)))
+        }
         for t in tasks:
+            t.story_criteria = progress.get(t.story_id)
             everything = list(t.comments.all())
             t.comment_count = len(everything)
             t.recent_comments = everything[-3:]

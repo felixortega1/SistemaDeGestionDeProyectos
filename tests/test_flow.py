@@ -3,7 +3,7 @@ import datetime
 import pytest
 
 from apps.backlog import services as backlog
-from apps.backlog.models import Comment, Task
+from apps.backlog.models import Comment, Story, Task
 from apps.core.exceptions import Conflict, Forbidden, Unprocessable
 from apps.projects import services as projects
 
@@ -91,25 +91,26 @@ def test_edit_project_po_only(project, po, dev, client_for):
 
 
 # ------------------------------------------------ historias, actividades y sprints
-def test_story_pages_and_activity_creation(project, po, client_for):
+def test_story_pages_and_task_creation(project, po, client_for):
     c = client_for(po)
     r = c.post(f"/projects/{project.pk}/stories/new/", {"title": "El usuario debe pagar con tarjeta", "stakeholder": "Ventas"})
     assert r.status_code == 302
-    story = Task.objects.get(kind="story")
+    story = Story.objects.get()
+    assert r.url == f"/stories/{story.pk}/"
     assert story.stakeholder == "Ventas"
     assert b"pagar con tarjeta" in c.get(f"/projects/{project.pk}/stories/").content
-    assert c.post(f"/tasks/{story.pk}/activities/new/", {"title": "Integrar pasarela"}).status_code == 302
-    act = Task.objects.get(kind="task")
-    assert act.parent_id == story.pk
-    assert b"Integrar pasarela" in c.get(f"/tasks/{story.pk}/").content
+    assert c.post(f"/stories/{story.pk}/tasks/new/", {"title": "Integrar pasarela"}).status_code == 302
+    task = Task.objects.get()
+    assert task.story_id == story.pk
+    assert b"Integrar pasarela" in c.get(f"/stories/{story.pk}/").content
     assert c.get(f"/projects/{project.pk}/").url == f"/projects/{project.pk}/stories/"
 
 
-def test_assign_story_to_sprint(project, make_task, today):
+def test_assign_story_to_sprint(project, make_task, make_story, today):
     from apps.sprints import services as sprint_services
 
-    story = make_task("hist", kind="story")
-    a, b = make_task("a", parent=story), make_task("b", parent=story)
+    story = make_story("hist")
+    a, b = make_task("a", story=story), make_task("b", story=story)
     sprint = sprint_services.create_sprint(project, "S", start_date=today, end_date=today)
     assert len(backlog.assign_story_to_sprint(story, sprint)) == 2
     a.refresh_from_db()
@@ -117,15 +118,13 @@ def test_assign_story_to_sprint(project, make_task, today):
     assert a.sprint_id == b.sprint_id == sprint.pk and a.column_id
     with pytest.raises(Unprocessable):
         backlog.assign_story_to_sprint(story, sprint)  # ya no queda nada pendiente
-    with pytest.raises(Unprocessable):
-        backlog.assign_story_to_sprint(a, sprint)  # no es historia
 
 
-def test_assign_story_is_all_or_nothing(project, make_task, today, columns):
+def test_assign_story_is_all_or_nothing(project, make_task, make_story, today, columns):
     from apps.sprints import services as sprint_services
 
-    story = make_task("hist", kind="story")
-    a, b = make_task("a", parent=story), make_task("b", parent=story)
+    story = make_story("hist")
+    a, b = make_task("a", story=story), make_task("b", story=story)
     sprint = sprint_services.create_sprint(project, "S", start_date=today, end_date=today)
     sprint_services.start_sprint(sprint)
     first = columns["Por hacer"]
@@ -138,26 +137,30 @@ def test_assign_story_is_all_or_nothing(project, make_task, today, columns):
     assert a.sprint_id is None and b.sprint_id is None  # se revirtió todo
 
 
-def test_assign_story_via_view_roles(project, sm, dev, make_task, today, client_for):
+def test_assign_story_via_view_roles(project, sm, dev, make_task, make_story, today, client_for):
     from apps.sprints import services as sprint_services
 
-    story = make_task("hist", kind="story")
-    make_task("a", parent=story)
+    story = make_story("hist")
+    make_task("a", story=story)
     sprint = sprint_services.create_sprint(project, "S", start_date=today, end_date=today)
-    url = f"/tasks/{story.pk}/assign-story/"
+    url = f"/stories/{story.pk}/assign-sprint/"
     assert client_for(dev).post(url, {"sprint_id": sprint.pk}).status_code == 403
     assert client_for(sm).post(url, {"sprint_id": sprint.pk}).status_code == 302
 
 
 # ------------------------------------------------ comentarios
-def test_members_can_comment_on_story_and_task(project, po, dev, make_task, client_for):
-    story = make_task("hist", kind="story")
-    task = make_task("act", parent=story)
-    for user, target in ((po, story), (dev, task)):
-        r = client_for(user).post(f"/tasks/{target.pk}/comments/add/", {"body": "Necesito más detalle"})
-        assert r.status_code == 302
+def test_members_can_comment_on_story_and_task(project, po, dev, make_task, make_story, client_for):
+    story = make_story("hist")
+    task = make_task("act", story=story)
+    r = client_for(po).post(f"/stories/{story.pk}/comments/add/", {"body": "Necesito más detalle"})
+    assert r.status_code == 302
+    r = client_for(dev).post(f"/tasks/{task.pk}/comments/add/", {"body": "Necesito más detalle"})
+    assert r.status_code == 302
     assert Comment.objects.count() == 2
-    assert b"Necesito" in client_for(po).get(f"/tasks/{story.pk}/").content
+    assert Comment.objects.filter(story=story, task__isnull=True).count() == 1
+    assert Comment.objects.filter(task=task, story__isnull=True).count() == 1
+    assert b"Necesito" in client_for(po).get(f"/stories/{story.pk}/").content
+    assert b"Necesito" in client_for(po).get(f"/tasks/{task.pk}/").content
 
 
 def test_empty_comment_is_422_and_outsider_gets_404(project, po, make_user, make_task, client_for):
@@ -198,9 +201,9 @@ def test_po_pm_and_sm_can_create_stories_and_activities(project, po, pm, sm, who
     c = client_for(user)
     r = c.post(f"/projects/{project.pk}/stories/new/", {"title": f"Historia de {who}", "stakeholder": "Cliente"})
     assert r.status_code == 302
-    story = Task.objects.get(title=f"Historia de {who}")
-    assert c.post(f"/tasks/{story.pk}/activities/new/", {"title": "Una actividad"}).status_code == 302
-    assert story.children.count() == 1
+    story = Story.objects.get(title=f"Historia de {who}")
+    assert c.post(f"/stories/{story.pk}/tasks/new/", {"title": "Una tarea"}).status_code == 302
+    assert story.tasks.count() == 1
     page = c.get(f"/projects/{project.pk}/stories/").content
     assert b"Nueva historia" in page and b"Las historias las crean" not in page
 
@@ -208,11 +211,11 @@ def test_po_pm_and_sm_can_create_stories_and_activities(project, po, pm, sm, who
 def test_developer_cannot_create_stories_and_sees_notice(project, dev, client_for):
     c = client_for(dev)
     assert c.post(f"/projects/{project.pk}/stories/new/", {"title": "No debería"}).status_code == 403
-    story = backlog.create_task(project, title="Existente", kind="story")
-    assert c.post(f"/tasks/{story.pk}/activities/new/", {"title": "No"}).status_code == 403
+    story = backlog.create_story(project, title="Existente")
+    assert c.post(f"/stories/{story.pk}/tasks/new/", {"title": "No"}).status_code == 403
     page = c.get(f"/projects/{project.pk}/stories/").content
     assert b"Las historias las crean" in page and b"Nueva historia" not in page
-    assert not Task.objects.filter(title="No debería").exists()
+    assert not Story.objects.filter(title="No debería").exists()
 
 
 def test_story_roles_only_apply_inside_their_own_project(project, po, pm, make_user, client_for):

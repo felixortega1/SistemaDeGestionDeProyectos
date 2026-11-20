@@ -2,6 +2,9 @@
 {% block title %}Sprints{% endblock %}
 {% block content %}
 <h1>Sprints</h1>
+<p class="muted small" id="velocity">
+  {% if velocity is None %}Velocidad promedio: aún no hay sprints cerrados.{% else %}Velocidad promedio: <strong class="tabular">{{ velocity }}</strong> puntos por sprint (promedio de los sprints cerrados).{% endif %}
+</p>
 
 {% if can_manage %}
 <details {% if new_form.errors %}open{% endif %}>
@@ -15,11 +18,30 @@
   <h2>{{ s.name }} <span class="tag status-{{ s.status }}">{{ s.get_status_display }}</span></h2>
   <p class="muted">{{ s.start_date|date:"Y-m-d"|default:"?" }} → {{ s.end_date|date:"Y-m-d"|default:"?" }}{% if s.goal %} · {{ s.goal }}{% endif %}</p>
 
+  {% if s.metrics %}
+  <div class="metrics">
+    {% if s.status == 'closed' %}
+    <div><strong>{{ s.metrics.committed_points }}</strong><span class="muted small">puntos comprometidos</span></div>
+    <div><strong>{{ s.metrics.completed_points }}</strong><span class="muted small">puntos completados</span></div>
+    {% else %}
+    <div><strong>{{ s.metrics.done_points }} / {{ s.metrics.total_points }}</strong><span class="muted small">puntos hechos</span></div>
+    {% endif %}
+    <div><strong>{{ s.metrics.done_tasks }} / {{ s.metrics.total_tasks }}</strong><span class="muted small">tareas hechas</span></div>
+    <div><strong>{{ s.metrics.percent }} %</strong><span class="muted small">avance</span></div>
+  </div>
+  <div class="meter" aria-hidden="true"><i style="width:{{ s.metrics.percent }}%"></i></div>
+  {% endif %}
+
   {% if s.task_list %}
   <table>
-    <tr><th>Tarea</th><th>Columna</th><th>Responsable</th></tr>
+    <tr><th>Tarea</th><th>Columna</th><th>Responsable</th>{% if can_manage and s.status == 'planned' %}<th></th>{% endif %}</tr>
     {% for t in s.task_list %}{% if t.sprint_id == s.pk %}
-    <tr><td>{{ t.title }}</td><td>{{ t.column.name }}</td><td>{{ t.assignee.display_name|default:"—" }}</td></tr>
+    <tr>
+      <td>{{ t.title }}</td><td>{{ t.column.name }}</td><td>{{ t.assignee.display_name|default:"—" }}</td>
+      {% if can_manage and s.status == 'planned' %}
+      <td><form method="post" action="{% url 'task_unassign_sprint' t.pk %}" class="inline">{% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}"><button type="submit" class="link small">Devolver al backlog</button></form></td>
+      {% endif %}
+    </tr>
     {% endif %}{% endfor %}
   </table>
   {% else %}<p class="muted">Sin tareas.</p>{% endif %}
